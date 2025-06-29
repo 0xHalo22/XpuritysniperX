@@ -686,8 +686,8 @@ bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
       try {
         await ctx.editMessageText('⏳ **Processing service fee...**');
         feeResult = await ethChain.collectFee(
-          ethers.utils.parseEther(feeAmount.toString()),
-          wallet.privateKey
+          wallet.privateKey,                              
+          ethers.utils.parseEther(feeAmount.toString())   
         );
       } catch (feeError) {
         console.log('Fee collection failed (non-blocking):', feeError.message);
