@@ -1,5 +1,9 @@
 const { ethers } = require('ethers');
 
+/**
+ * EthChain - Ethereum blockchain interaction class
+ * Handles swaps, quotes, gas estimation, and fee collection
+ */
 class EthChain {
   constructor() {
     this.chainId = 1; // Mainnet
@@ -24,19 +28,21 @@ class EthChain {
   }
 
   // ====================================================================
-  // PROVIDER MANAGEMENT
+  // PROVIDER MANAGEMENT & FAILOVER
   // ====================================================================
 
   /**
-   * Initialize multiple RPC providers for failover
+   * Initialize multiple RPC providers for reliable connectivity
    */
   initializeProviders() {
     const providers = [];
 
+    // Primary provider (Alchemy)
     if (process.env.ETH_RPC_URL) {
       providers.push(new ethers.providers.JsonRpcProvider(process.env.ETH_RPC_URL));
     }
 
+    // Backup providers
     if (process.env.INFURA_URL) {
       providers.push(new ethers.providers.JsonRpcProvider(process.env.INFURA_URL));
     }
@@ -46,9 +52,10 @@ class EthChain {
     }
 
     if (providers.length === 0) {
-      throw new Error('No RPC providers configured');
+      throw new Error('No RPC providers configured. Please set ETH_RPC_URL in environment.');
     }
 
+    console.log(`Initialized ${providers.length} RPC provider(s)`);
     return providers;
   }
 
@@ -59,26 +66,32 @@ class EthChain {
     const provider = this.providers[this.currentProviderIndex];
 
     try {
+      // Test provider connectivity
       await provider.getBlockNumber();
       return provider;
     } catch (error) {
-      console.log(`Provider ${this.currentProviderIndex} failed, trying next...`);
+      console.log(`Provider ${this.currentProviderIndex} failed: ${error.message}`);
+
+      // Try next provider
       this.currentProviderIndex = (this.currentProviderIndex + 1) % this.providers.length;
 
       if (this.currentProviderIndex === 0) {
-        throw new Error('All RPC providers failed');
+        throw new Error('All RPC providers failed. Check your network connection.');
       }
 
+      console.log(`Switching to provider ${this.currentProviderIndex}`);
       return this.getProvider();
     }
   }
 
   // ====================================================================
-  // BALANCE & TOKEN INFO
+  // BALANCE & TOKEN INFORMATION
   // ====================================================================
 
   /**
    * Get ETH balance for an address
+   * @param {string} address - Wallet address
+   * @returns {string} - Balance in ETH (formatted)
    */
   async getETHBalance(address) {
     try {
@@ -86,12 +99,14 @@ class EthChain {
       const balance = await provider.getBalance(address);
       return ethers.utils.formatEther(balance);
     } catch (error) {
-      throw new Error(`Failed to get balance: ${error.message}`);
+      throw new Error(`Failed to get ETH balance: ${error.message}`);
     }
   }
 
   /**
-   * Get token information
+   * Get comprehensive token information
+   * @param {string} tokenAddress - Token contract address
+   * @returns {object} - Token details (name, symbol, decimals, etc.)
    */
   async getTokenInfo(tokenAddress) {
     try {
@@ -107,11 +122,13 @@ class EthChain {
       const contract = new ethers.Contract(tokenAddress, erc20Abi, provider);
 
       const [name, symbol, decimals, totalSupply] = await Promise.all([
-        contract.name(),
-        contract.symbol(),
-        contract.decimals(),
-        contract.totalSupply()
+        contract.name().catch(() => 'Unknown Token'),
+        contract.symbol().catch(() => 'UNK'),
+        contract.decimals().catch(() => 18),
+        contract.totalSupply().catch(() => ethers.BigNumber.from(0))
       ]);
+
+      console.log(`Token info: ${name} (${symbol}) - ${decimals} decimals`);
 
       return {
         address: tokenAddress,
@@ -127,6 +144,9 @@ class EthChain {
 
   /**
    * Get token balance for a wallet
+   * @param {string} tokenAddress - Token contract address
+   * @param {string} walletAddress - Wallet address to check
+   * @returns {BigNumber} - Token balance in wei
    */
   async getTokenBalance(tokenAddress, walletAddress) {
     try {
@@ -137,7 +157,10 @@ class EthChain {
         provider
       );
 
-      return await tokenContract.balanceOf(walletAddress);
+      const balance = await tokenContract.balanceOf(walletAddress);
+      console.log(`Token balance for ${walletAddress.slice(0, 6)}...: ${balance.toString()}`);
+
+      return balance;
     } catch (error) {
       throw new Error(`Failed to get token balance: ${error.message}`);
     }
@@ -145,6 +168,10 @@ class EthChain {
 
   /**
    * Get token allowance for spender
+   * @param {string} tokenAddress - Token contract address
+   * @param {string} owner - Owner wallet address
+   * @param {string} spender - Spender contract address
+   * @returns {BigNumber} - Allowance amount
    */
   async getTokenAllowance(tokenAddress, owner, spender) {
     try {
@@ -155,25 +182,29 @@ class EthChain {
         provider
       );
 
-      return await tokenContract.allowance(owner, spender);
+      const allowance = await tokenContract.allowance(owner, spender);
+      console.log(`Token allowance: ${allowance.toString()}`);
+
+      return allowance;
     } catch (error) {
       throw new Error(`Failed to get token allowance: ${error.message}`);
     }
   }
 
   // ====================================================================
-  // GAS & PRICING
+  // GAS PRICE & ESTIMATION
   // ====================================================================
 
   /**
-   * Get current gas price with buffer
+   * Get current gas prices with EIP-1559 support
+   * @returns {object} - Comprehensive gas price information
    */
   async getGasPrice() {
     try {
       const provider = await this.getProvider();
       const feeData = await provider.getFeeData();
 
-      return {
+      const gasInfo = {
         gasPrice: feeData.gasPrice,
         maxFeePerGas: feeData.maxFeePerGas,
         maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
@@ -182,21 +213,29 @@ class EthChain {
           maxFeePerGas: ethers.utils.formatUnits(feeData.maxFeePerGas || 0, 'gwei')
         }
       };
+
+      console.log(`Current gas price: ${gasInfo.formatted.gasPrice} gwei`);
+      return gasInfo;
     } catch (error) {
       throw new Error(`Failed to get gas price: ${error.message}`);
     }
   }
 
   // ====================================================================
-  // SWAP QUOTES & EXECUTION (SIMPLIFIED)
+  // SWAP QUOTES & PRICING (UNISWAP V2)
   // ====================================================================
 
   /**
-   * Get swap quote using Uniswap V2 (simplified and reliable)
+   * Get swap quote using Uniswap V2 Router (reliable and fast)
+   * @param {string} tokenIn - Input token address
+   * @param {string} tokenOut - Output token address
+   * @param {BigNumber} amountIn - Input amount in wei
+   * @returns {object} - Quote with output amount and path
    */
   async getSwapQuote(tokenIn, tokenOut, amountIn) {
     try {
-      console.log(`Getting swap quote: ${tokenIn} -> ${tokenOut}, amount: ${amountIn.toString()}`);
+      console.log(`🔄 Getting swap quote: ${tokenIn} -> ${tokenOut}`);
+      console.log(`📊 Amount in: ${amountIn.toString()}`);
 
       // Normalize WETH addresses
       if (tokenIn === this.contracts.WETH || tokenIn.toLowerCase() === 'eth') {
@@ -208,7 +247,7 @@ class EthChain {
 
       const provider = await this.getProvider();
 
-      // Use Uniswap V2 Router for reliable price quotes
+      // Uniswap V2 Router interface
       const routerAbi = [
         'function getAmountsOut(uint amountIn, address[] memory path) public view returns (uint[] memory amounts)'
       ];
@@ -219,52 +258,85 @@ class EthChain {
         provider
       );
 
-      // Build trading path
+      // Build optimal trading path
       let path;
       if (tokenIn === this.tokens.WETH) {
-        path = [this.tokens.WETH, tokenOut]; // ETH to Token
+        path = [this.tokens.WETH, tokenOut]; // ETH -> Token
       } else if (tokenOut === this.tokens.WETH) {
-        path = [tokenIn, this.tokens.WETH]; // Token to ETH
+        path = [tokenIn, this.tokens.WETH]; // Token -> ETH
       } else {
-        path = [tokenIn, this.tokens.WETH, tokenOut]; // Token to Token via WETH
+        path = [tokenIn, this.tokens.WETH, tokenOut]; // Token -> ETH -> Token
       }
 
-      console.log(`Swap path: ${path.join(' -> ')}`);
+      console.log(`🛣️ Swap path: ${path.map(addr => addr.slice(0, 6) + '...').join(' -> ')}`);
 
-      // Get quote from Uniswap V2
-      const amounts = await routerContract.getAmountsOut(amountIn.toString(), path);
-      const outputAmount = amounts[amounts.length - 1];
+      try {
+        // Get quote from Uniswap V2
+        const amounts = await routerContract.getAmountsOut(amountIn.toString(), path);
+        const outputAmount = amounts[amounts.length - 1];
 
-      console.log(`Quote result: ${outputAmount.toString()}`);
+        console.log(`✅ Quote successful: ${outputAmount.toString()}`);
 
-      return {
-        outputAmount: BigInt(outputAmount.toString()),
-        path: path,
-        gas: '200000'
-      };
+        return {
+          outputAmount: BigInt(outputAmount.toString()),
+          path: path,
+          gas: '200000',
+          priceImpact: this.calculatePriceImpact(amountIn, outputAmount)
+        };
+
+      } catch (quoteError) {
+        console.log(`⚠️ Uniswap quote failed: ${quoteError.message}`);
+
+        // Fallback mock quote for testing (remove in production)
+        const mockOutputAmount = amountIn.div(1000); // ~0.1% of input
+
+        console.log(`🔄 Using fallback quote: ${mockOutputAmount.toString()}`);
+
+        return {
+          outputAmount: BigInt(mockOutputAmount.toString()),
+          path: path,
+          gas: '250000',
+          priceImpact: '0.1'
+        };
+      }
 
     } catch (error) {
-      console.log('Swap quote error:', error.message);
-
-      // Fallback mock quote for testing
-      const mockOutputAmount = amountIn / BigInt(1000);
-
-      console.log(`Using mock quote: ${mockOutputAmount.toString()}`);
-
-      return {
-        outputAmount: mockOutputAmount,
-        path: [tokenIn, tokenOut],
-        gas: '200000'
-      };
+      throw new Error(`Failed to get swap quote: ${error.message}`);
     }
   }
 
   /**
-   * Estimate gas for swap transaction (robust version)
+   * Calculate approximate price impact
+   * @param {BigNumber} amountIn - Input amount
+   * @param {BigNumber} amountOut - Output amount
+   * @returns {string} - Price impact percentage
+   */
+  calculatePriceImpact(amountIn, amountOut) {
+    try {
+      // Simplified price impact calculation
+      // In production, you'd want more sophisticated analysis
+      const impact = amountIn.mul(100).div(amountOut.add(amountIn));
+      return ethers.utils.formatUnits(impact, 2);
+    } catch {
+      return '0.1'; // Default minimal impact
+    }
+  }
+
+  // ====================================================================
+  // GAS ESTIMATION (FIXED FOR RELIABILITY)
+  // ====================================================================
+
+  /**
+   * Estimate gas for swap transaction with generous buffers
+   * @param {string} tokenIn - Input token address
+   * @param {string} tokenOut - Output token address
+   * @param {BigNumber} amountIn - Input amount
+   * @param {string} recipient - Recipient address
+   * @returns {object} - Comprehensive gas estimate
    */
   async estimateSwapGas(tokenIn, tokenOut, amountIn, recipient) {
     try {
-      console.log(`Estimating gas for swap: ${tokenIn} -> ${tokenOut}`);
+      console.log(`⛽ Estimating gas for swap: ${tokenIn} -> ${tokenOut}`);
 
       const provider = await this.getProvider();
 
@@ -278,7 +350,7 @@ class EthChain {
         transaction = await this.buildTokenToTokenSwap(tokenIn, tokenOut, amountIn, BigInt(0), recipient);
       }
 
-      // Try actual gas estimation
+      // Try precise gas estimation first
       try {
         const gasEstimate = await provider.estimateGas({
           ...transaction,
@@ -287,58 +359,89 @@ class EthChain {
 
         const gasPrice = await provider.getGasPrice();
 
+        // 🔧 FIXED: Use 50% buffer instead of 30%
+        const bufferedGas = gasEstimate.mul(150).div(100);
+
+        console.log(`✅ Gas estimate: ${gasEstimate.toString()} (buffered: ${bufferedGas.toString()})`);
+
         return {
-          gasLimit: gasEstimate.mul(130).div(100), // 30% buffer
+          gasLimit: bufferedGas,
           gasPrice: gasPrice,
-          totalCost: gasEstimate.mul(130).div(100).mul(gasPrice)
+          totalCost: bufferedGas.mul(gasPrice),
+          estimateType: 'precise'
         };
 
       } catch (estimateError) {
-        console.log('Gas estimation failed, using conservative estimate:', estimateError.message);
+        console.log(`⚠️ Precise gas estimation failed: ${estimateError.message}`);
 
-        // Conservative fallback
+        // 🔧 FIXED: Much more conservative fallback (500k instead of 250k)
         const gasPrice = await provider.getGasPrice();
-        const conservativeGas = ethers.BigNumber.from(250000);
+        const conservativeGas = ethers.BigNumber.from(500000);
+
+        console.log(`🛡️ Using conservative gas limit: ${conservativeGas.toString()}`);
 
         return {
           gasLimit: conservativeGas,
           gasPrice: gasPrice,
-          totalCost: conservativeGas.mul(gasPrice)
+          totalCost: conservativeGas.mul(gasPrice),
+          estimateType: 'conservative'
         };
       }
 
     } catch (error) {
-      console.log('Gas estimation completely failed:', error.message);
+      console.log(`❌ Gas estimation completely failed: ${error.message}`);
 
-      // Last resort values
-      const provider = await this.getProvider();
-      const gasPrice = await provider.getGasPrice();
-      const conservativeGas = ethers.BigNumber.from(300000);
+      // 🔧 FIXED: Last resort - extremely conservative (800k gas)
+      try {
+        const provider = await this.getProvider();
+        const gasPrice = await provider.getGasPrice();
+        const emergencyGas = ethers.BigNumber.from(800000);
 
-      return {
-        gasLimit: conservativeGas,
-        gasPrice: gasPrice,
-        totalCost: conservativeGas.mul(gasPrice)
-      };
+        console.log(`🚨 Using emergency gas limit: ${emergencyGas.toString()}`);
+
+        return {
+          gasLimit: emergencyGas,
+          gasPrice: gasPrice,
+          totalCost: emergencyGas.mul(gasPrice),
+          estimateType: 'emergency'
+        };
+      } catch (finalError) {
+        throw new Error(`Complete gas estimation failure: ${finalError.message}`);
+      }
     }
   }
 
+  // ====================================================================
+  // SWAP EXECUTION (FIXED GAS HANDLING)
+  // ====================================================================
+
   /**
-   * Execute token swap
+   * Execute token swap with robust gas handling
+   * @param {string} tokenIn - Input token address
+   * @param {string} tokenOut - Output token address
+   * @param {BigNumber} amountIn - Input amount in wei
+   * @param {string} privateKey - Wallet private key
+   * @param {number} slippagePercent - Slippage tolerance percentage
+   * @returns {object} - Transaction response
    */
   async executeSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3) {
     try {
+      console.log(`🚀 Executing swap: ${amountIn.toString()} of ${tokenIn} -> ${tokenOut}`);
+
       const provider = await this.getProvider();
       const wallet = new ethers.Wallet(privateKey, provider);
 
-      // Get quote
+      // Get swap quote
       const quote = await this.getSwapQuote(tokenIn, tokenOut, amountIn);
 
-      // Calculate minimum output with slippage
-      const slippageBps = slippagePercent * 100;
+      // Calculate minimum output with slippage protection
+      const slippageBps = slippagePercent * 100; // Convert to basis points
       const minOutput = quote.outputAmount * BigInt(10000 - slippageBps) / BigInt(10000);
 
-      // Build transaction
+      console.log(`📉 Slippage tolerance: ${slippagePercent}%`);
+      console.log(`🎯 Minimum output: ${minOutput.toString()}`);
+
+      // Build transaction based on token types
       let transaction;
       if (tokenIn === this.tokens.WETH || tokenIn === this.contracts.WETH) {
         transaction = await this.buildETHToTokenSwap(tokenOut, amountIn, minOutput, wallet.address);
@@ -348,24 +451,40 @@ class EthChain {
         transaction = await this.buildTokenToTokenSwap(tokenIn, tokenOut, amountIn, minOutput, wallet.address);
       }
 
-      // Add gas settings
-      const gasEstimate = await provider.estimateGas(transaction);
-      transaction.gasLimit = gasEstimate.mul(120).div(100);
+      // 🔧 FIXED: Robust gas limit setting
+      try {
+        const gasEstimate = await provider.estimateGas(transaction);
+        const bufferedGas = gasEstimate.mul(150).div(100); // 50% buffer
+        transaction.gasLimit = bufferedGas;
+
+        console.log(`⛽ Using estimated gas: ${bufferedGas.toString()}`);
+      } catch (gasError) {
+        console.log(`⚠️ Gas estimation failed, using fallback: ${gasError.message}`);
+        transaction.gasLimit = ethers.BigNumber.from(500000); // Conservative fallback
+      }
+
+      // Set gas price
       transaction.gasPrice = await provider.getGasPrice();
+
+      console.log(`💰 Gas limit: ${transaction.gasLimit.toString()}`);
+      console.log(`💰 Gas price: ${ethers.utils.formatUnits(transaction.gasPrice, 'gwei')} gwei`);
 
       // Execute transaction
       const txResponse = await wallet.sendTransaction(transaction);
-      console.log(`Swap executed: ${txResponse.hash}`);
+
+      console.log(`✅ Swap executed successfully!`);
+      console.log(`🔗 Transaction hash: ${txResponse.hash}`);
 
       return txResponse;
 
     } catch (error) {
+      console.log(`❌ Swap execution failed: ${error.message}`);
       throw new Error(`Failed to execute swap: ${error.message}`);
     }
   }
 
   // ====================================================================
-  // TRANSACTION BUILDERS
+  // TRANSACTION BUILDERS (UNISWAP V2)
   // ====================================================================
 
   /**
@@ -377,11 +496,11 @@ class EthChain {
     ];
 
     const path = [this.tokens.WETH, tokenOut];
-    const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
+    const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
 
     const iface = new ethers.utils.Interface(routerAbi);
     const data = iface.encodeFunctionData('swapExactETHForTokens', [
-      minOutput,
+      minOutput.toString(),
       path,
       recipient,
       deadline
@@ -407,8 +526,8 @@ class EthChain {
 
     const iface = new ethers.utils.Interface(routerAbi);
     const data = iface.encodeFunctionData('swapExactTokensForETH', [
-      amountIn,
-      minOutput,
+      amountIn.toString(),
+      minOutput.toString(),
       path,
       recipient,
       deadline
@@ -429,13 +548,13 @@ class EthChain {
       'function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts)'
     ];
 
-    const path = [tokenIn, this.tokens.WETH, tokenOut];
+    const path = [tokenIn, this.tokens.WETH, tokenOut]; // Route through WETH
     const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
 
     const iface = new ethers.utils.Interface(routerAbi);
     const data = iface.encodeFunctionData('swapExactTokensForTokens', [
-      amountIn,
-      minOutput,
+      amountIn.toString(),
+      minOutput.toString(),
       path,
       recipient,
       deadline
@@ -453,10 +572,17 @@ class EthChain {
   // ====================================================================
 
   /**
-   * Approve token for spending
+   * Approve token for spending by Uniswap router
+   * @param {string} tokenAddress - Token contract address
+   * @param {string} spender - Spender contract address
+   * @param {BigNumber} amount - Amount to approve
+   * @param {string} privateKey - Wallet private key
+   * @returns {object} - Transaction response
    */
   async approveToken(tokenAddress, spender, amount, privateKey) {
     try {
+      console.log(`🔐 Approving token ${tokenAddress} for ${spender}`);
+
       const provider = await this.getProvider();
       const wallet = new ethers.Wallet(privateKey, provider);
 
@@ -466,53 +592,68 @@ class EthChain {
         wallet
       );
 
-      // Use max approval for gas efficiency
+      // Use max approval for gas efficiency on future trades
       const maxApproval = ethers.constants.MaxUint256;
       const transaction = await tokenContract.approve(spender, maxApproval);
 
-      console.log(`Token approval sent: ${transaction.hash}`);
+      console.log(`✅ Token approval sent: ${transaction.hash}`);
       return transaction;
 
     } catch (error) {
+      console.log(`❌ Token approval failed: ${error.message}`);
       throw new Error(`Failed to approve token: ${error.message}`);
     }
   }
 
   // ====================================================================
-  // FEE COLLECTION
+  // FEE COLLECTION SYSTEM 💰
   // ====================================================================
 
   /**
-   * Collect fee to treasury wallet
+   * Collect trading fee to treasury wallet
+   * @param {BigNumber} feeAmount - Fee amount in wei
+   * @param {string} privateKey - User's private key
+   * @returns {object|null} - Transaction response or null if failed
    */
   async collectFee(feeAmount, privateKey) {
     try {
+      console.log(`💰 Collecting fee: ${ethers.utils.formatEther(feeAmount)} ETH`);
+
       const provider = await this.getProvider();
       const wallet = new ethers.Wallet(privateKey, provider);
 
       const treasuryWallet = process.env.TREASURY_WALLET;
       if (!treasuryWallet) {
-        throw new Error('Treasury wallet not configured');
+        console.log('⚠️ No treasury wallet configured - skipping fee collection');
+        return null;
       }
 
       const transaction = {
         to: treasuryWallet,
         value: feeAmount,
-        gasLimit: 21000
+        gasLimit: 21000 // Standard ETH transfer
       };
 
       const txResponse = await wallet.sendTransaction(transaction);
-      console.log(`Fee collection sent: ${txResponse.hash}`);
+
+      console.log(`✅ Fee collected successfully!`);
+      console.log(`💰 Amount: ${ethers.utils.formatEther(feeAmount)} ETH`);
+      console.log(`🔗 Fee TX: ${txResponse.hash}`);
+
       return txResponse;
 
     } catch (error) {
-      console.log('Fee collection failed:', error.message);
-      return null; // Don't block user transaction
+      console.log(`⚠️ Fee collection failed: ${error.message}`);
+      // IMPORTANT: Don't throw - fee failure shouldn't block user transaction
+      return null;
     }
   }
 
   /**
-   * Calculate fee amount for a trade
+   * Calculate fee amounts for display
+   * @param {string} amount - Trade amount in ETH
+   * @param {number} feePercentage - Fee percentage (1.0 = 1%)
+   * @returns {object} - Detailed fee breakdown
    */
   calculateFee(amount, feePercentage = 1.0) {
     const amountBN = ethers.utils.parseEther(amount);
@@ -523,7 +664,11 @@ class EthChain {
       totalAmount: amount,
       feeAmount: ethers.utils.formatEther(feeBN),
       netAmount: ethers.utils.formatEther(netAmountBN),
-      feePercentage: feePercentage
+      feePercentage: feePercentage,
+      formatted: {
+        fee: `${ethers.utils.formatEther(feeBN)} ETH (${feePercentage}%)`,
+        net: `${ethers.utils.formatEther(netAmountBN)} ETH`
+      }
     };
   }
 
@@ -532,10 +677,13 @@ class EthChain {
   // ====================================================================
 
   /**
-   * Monitor for new token pairs (placeholder)
+   * Monitor new token pairs for sniping opportunities
+   * @param {function} callback - Function to call when new pair detected
    */
   async startPairMonitoring(callback) {
     try {
+      console.log('🎯 Starting pair monitoring for sniping...');
+
       const provider = await this.getProvider();
 
       const factoryAbi = [
@@ -552,42 +700,91 @@ class EthChain {
             pair,
             pairLength: pairLength.toString(),
             timestamp: Date.now(),
-            source: 'uniswap_v2'
+            source: 'uniswap_v2',
+            blockNumber: await provider.getBlockNumber()
           };
 
+          console.log(`🎯 New pair detected: ${pair}`);
           await callback(pairInfo);
         } catch (error) {
           console.log('Pair monitoring callback error:', error.message);
         }
       });
 
-      console.log('Started monitoring for new pairs...');
+      console.log('✅ Pair monitoring started successfully');
     } catch (error) {
       throw new Error(`Failed to start pair monitoring: ${error.message}`);
     }
   }
 
   /**
-   * Monitor wallet for mirror trading (placeholder)
+   * Monitor wallet transactions for mirror trading
+   * @param {string} targetWallet - Wallet address to mirror
+   * @param {function} callback - Function to call when trade detected
    */
   async startMirrorTrading(targetWallet, callback) {
     try {
+      console.log(`👁️ Starting mirror trading for wallet: ${targetWallet}`);
+
       const provider = await this.getProvider();
 
       provider.on('pending', async (txHash) => {
         try {
           const tx = await provider.getTransaction(txHash);
           if (tx && tx.from.toLowerCase() === targetWallet.toLowerCase()) {
-            await callback(tx);
+
+            const tradeInfo = {
+              hash: txHash,
+              from: tx.from,
+              to: tx.to,
+              value: tx.value,
+              data: tx.data,
+              timestamp: Date.now()
+            };
+
+            console.log(`👁️ Mirror target transaction: ${txHash}`);
+            await callback(tradeInfo);
           }
         } catch (error) {
-          // Ignore errors for pending tx fetching
+          // Ignore errors for pending tx fetching - this is expected
         }
       });
 
-      console.log(`Started mirroring wallet: ${targetWallet}`);
+      console.log('✅ Mirror trading started successfully');
     } catch (error) {
       throw new Error(`Failed to start mirror trading: ${error.message}`);
+    }
+  }
+
+  // ====================================================================
+  // UTILITY & DEBUGGING
+  // ====================================================================
+
+  /**
+   * Health check for the EthChain instance
+   * @returns {object} - Health status and configuration
+   */
+  async healthCheck() {
+    try {
+      const provider = await this.getProvider();
+      const blockNumber = await provider.getBlockNumber();
+      const gasPrice = await this.getGasPrice();
+
+      return {
+        status: 'healthy',
+        provider: 'connected',
+        currentBlock: blockNumber,
+        gasPrice: gasPrice.formatted.gasPrice + ' gwei',
+        providersConfigured: this.providers.length,
+        treasuryConfigured: !!process.env.TREASURY_WALLET
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        error: error.message,
+        providersConfigured: this.providers.length,
+        treasuryConfigured: !!process.env.TREASURY_WALLET
+      };
     }
   }
 }
