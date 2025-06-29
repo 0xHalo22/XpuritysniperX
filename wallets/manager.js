@@ -18,21 +18,40 @@ class WalletManager {
    * @returns {string} - Encrypted private key
    */
   async importWallet(privateKey, userId) {
-    // Validate private key format
+    console.log(`DEBUG: Received key: ${privateKey.substring(0, 10)}...`);
+
+    // Clean the private key
+    privateKey = privateKey.trim();
+
+    // Add 0x prefix if not present
     if (!privateKey.startsWith('0x')) {
       privateKey = '0x' + privateKey;
+    }
+
+    console.log(`DEBUG: Cleaned key: ${privateKey.substring(0, 10)}... (length: ${privateKey.length})`);
+
+    // Validate length (should be 66 characters: 0x + 64 hex chars)
+    if (privateKey.length !== 66) {
+      throw new Error(`Invalid private key length: ${privateKey.length} (expected 66)`);
+    }
+
+    // Validate hex format
+    if (!/^0x[a-fA-F0-9]{64}$/.test(privateKey)) {
+      throw new Error('Invalid private key format: must be 64 hex characters');
     }
 
     try {
       // Test if private key is valid by creating wallet
       const testWallet = new ethers.Wallet(privateKey);
-      console.log(`Validating wallet: ${testWallet.address}`);
+      console.log(`DEBUG: Successfully created wallet with address: ${testWallet.address}`);
 
       // Encrypt the private key
       const encrypted = this.encryptPrivateKey(privateKey, userId);
+      console.log(`DEBUG: Successfully encrypted private key`);
 
       return encrypted;
     } catch (error) {
+      console.log(`DEBUG: Ethers wallet creation failed:`, error.message);
       throw new Error('Invalid private key format');
     }
   }
@@ -154,7 +173,7 @@ class WalletManager {
    */
   isValidAddress(address) {
     try {
-      return ethers.isAddress(address);
+      return ethers.utils.isAddress(address);
     } catch {
       return false;
     }
