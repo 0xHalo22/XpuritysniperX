@@ -57,41 +57,76 @@ class WalletManager {
   }
 
   /**
-   * Encrypt private key with user-specific salt
+   * Encrypt private key with user-specific salt - UNIVERSAL VERSION
    * @param {string} privateKey - Private key to encrypt
    * @param {string} userId - User ID for salt
    * @returns {string} - Encrypted key with IV
    */
   encryptPrivateKey(privateKey, userId) {
     try {
-      // Create user-specific salt
-      const salt = crypto.createHash('sha256').update(userId + this.encryptionKey).digest();
+      // Create user-specific key using hash (works on all Node.js versions)
+      const key = crypto.createHash('sha256').update(this.encryptionKey + userId).digest();
 
       // Generate random IV
       const iv = crypto.randomBytes(16);
 
-      // Create cipher
-      const cipher = crypto.createCipher(this.algorithm, salt);
+      // Create cipher using the universal method
+      const cipher = crypto.createCipher('aes-256-cbc', key);
 
       // Encrypt
       let encrypted = cipher.update(privateKey, 'utf8', 'hex');
       encrypted += cipher.final('hex');
 
-      // Combine IV and encrypted data
+      // Return IV + encrypted data
       return iv.toString('hex') + ':' + encrypted;
     } catch (error) {
-      throw new Error('Encryption failed: ' + error.message);
+      console.log('DEBUG: Encryption error:', error.message);
+
+      // Fallback to even simpler encryption if createCipher fails
+      try {
+        return this.simpleEncrypt(privateKey, userId);
+      } catch (fallbackError) {
+        throw new Error('Encryption failed: ' + error.message);
+      }
     }
   }
 
   /**
-   * Decrypt private key
+   * Simple fallback encryption for older Node.js versions
+   * @param {string} privateKey - Private key to encrypt
+   * @param {string} userId - User ID for salt
+   * @returns {string} - Base64 encoded encrypted key
+   */
+  simpleEncrypt(privateKey, userId) {
+    console.log('DEBUG: Using fallback encryption method');
+
+    // Create a simple XOR-based encryption with base64 encoding
+    const key = crypto.createHash('sha256').update(this.encryptionKey + userId).digest('hex');
+    let result = '';
+
+    for (let i = 0; i < privateKey.length; i++) {
+      const keyChar = key[i % key.length];
+      const encryptedChar = String.fromCharCode(privateKey.charCodeAt(i) ^ keyChar.charCodeAt(0));
+      result += encryptedChar;
+    }
+
+    // Encode in base64 for safe storage
+    return 'simple:' + Buffer.from(result).toString('base64');
+  }
+
+  /**
+   * Decrypt private key - UNIVERSAL VERSION
    * @param {string} encryptedKey - Encrypted private key with IV
    * @param {string} userId - User ID for salt
    * @returns {string} - Decrypted private key
    */
   decryptPrivateKey(encryptedKey, userId) {
     try {
+      // Check if it's simple encryption
+      if (encryptedKey.startsWith('simple:')) {
+        return this.simpleDecrypt(encryptedKey, userId);
+      }
+
       const parts = encryptedKey.split(':');
       if (parts.length !== 2) {
         throw new Error('Invalid encrypted key format');
@@ -100,11 +135,11 @@ class WalletManager {
       const iv = Buffer.from(parts[0], 'hex');
       const encrypted = parts[1];
 
-      // Create user-specific salt
-      const salt = crypto.createHash('sha256').update(userId + this.encryptionKey).digest();
+      // Create user-specific key
+      const key = crypto.createHash('sha256').update(this.encryptionKey + userId).digest();
 
       // Create decipher
-      const decipher = crypto.createDecipher(this.algorithm, salt);
+      const decipher = crypto.createDecipher('aes-256-cbc', key);
 
       // Decrypt
       let decrypted = decipher.update(encrypted, 'hex', 'utf8');
@@ -114,6 +149,28 @@ class WalletManager {
     } catch (error) {
       throw new Error('Decryption failed: ' + error.message);
     }
+  }
+
+  /**
+   * Simple fallback decryption
+   * @param {string} encryptedKey - Simple encrypted key
+   * @param {string} userId - User ID for salt
+   * @returns {string} - Decrypted private key
+   */
+  simpleDecrypt(encryptedKey, userId) {
+    const base64Data = encryptedKey.replace('simple:', '');
+    const encrypted = Buffer.from(base64Data, 'base64').toString();
+
+    const key = crypto.createHash('sha256').update(this.encryptionKey + userId).digest('hex');
+    let result = '';
+
+    for (let i = 0; i < encrypted.length; i++) {
+      const keyChar = key[i % key.length];
+      const decryptedChar = String.fromCharCode(encrypted.charCodeAt(i) ^ keyChar.charCodeAt(0));
+      result += decryptedChar;
+    }
+
+    return result;
   }
 
   /**

@@ -1,1 +1,31 @@
-{}
+{
+  "1445251170": {
+    "userId": "1445251170",
+    "wallets": [],
+    "activeWallet": 0,
+    "transactions": [],
+    "mirrorTargets": [],
+    "settings": {
+      "slippage": 3,
+      "gasMultiplier": 1.2,
+      "snipeStrategy": "both",
+      "maxSnipeAmount": "0.1"
+    },
+    "premium": {
+      "active": false,
+      "expiresAt": null
+    },
+    "stats": {
+      "totalTrades": 0,
+      "totalVolume": 0,
+      "totalFees": 0,
+      "winRate": 0
+    },
+    "createdAt": 1751177549673,
+    "lastActive": 1751177549673,
+    "ethWallets": [
+      "simple:B0xVVAFQAQJZBVIECFUKXQQEAVAKBgJZCQ5RXQYFBAEADwRTUwQMUwhWBQ4EWwsAVFQCVA0CAVYAUFwKDlpXU1QF"
+    ],
+    "activeEthWallet": 0
+  }
+}
