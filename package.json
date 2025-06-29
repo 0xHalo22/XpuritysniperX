@@ -1,15 +1,43 @@
 {
-  "name": "nodejs",
+  "name": "purity-sniper-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "ETH/SOL Telegram trading bot with sniping and mirror trading",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "node test/test.js",
+    "health": "curl http://localhost:3000/health"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "telegram",
+    "bot",
+    "ethereum",
+    "solana",
+    "trading",
+    "sniping",
+    "defi"
+  ],
+  "author": "7 7",
+  "license": "MIT",
   "dependencies": {
-    "@types/node": "^22.13.11"
+    "telegraf": "^4.16.3",
+    "ethers": "^5.7.2",
+    "@uniswap/sdk-core": "^4.2.1",
+    "@uniswap/v3-sdk": "^3.11.2",
+    "@uniswap/smart-order-router": "^3.23.0",
+    "@solana/web3.js": "^1.87.6",
+    "@solana/spl-token": "^0.3.9",
+    "bs58": "^5.0.0",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "winston": "^3.11.0",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
