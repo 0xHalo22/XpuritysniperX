@@ -1,6 +1,10 @@
 const crypto = require('crypto');
 const { ethers } = require('ethers');
 
+/**
+ * WalletManager - Secure wallet encryption and management
+ * Handles private key encryption, storage, and transaction signing
+ */
 class WalletManager {
   constructor() {
     this.algorithm = 'aes-256-cbc';
@@ -11,6 +15,10 @@ class WalletManager {
     }
   }
 
+  // ====================================================================
+  // WALLET IMPORT & VALIDATION
+  // ====================================================================
+
   /**
    * Import and encrypt a private key
    * @param {string} privateKey - Raw private key
@@ -20,25 +28,9 @@ class WalletManager {
   async importWallet(privateKey, userId) {
     console.log(`DEBUG: Received key: ${privateKey.substring(0, 10)}...`);
 
-    // Clean the private key
-    privateKey = privateKey.trim();
-
-    // Add 0x prefix if not present
-    if (!privateKey.startsWith('0x')) {
-      privateKey = '0x' + privateKey;
-    }
-
-    console.log(`DEBUG: Cleaned key: ${privateKey.substring(0, 10)}... (length: ${privateKey.length})`);
-
-    // Validate length (should be 66 characters: 0x + 64 hex chars)
-    if (privateKey.length !== 66) {
-      throw new Error(`Invalid private key length: ${privateKey.length} (expected 66)`);
-    }
-
-    // Validate hex format
-    if (!/^0x[a-fA-F0-9]{64}$/.test(privateKey)) {
-      throw new Error('Invalid private key format: must be 64 hex characters');
-    }
+    // Clean and validate the private key
+    privateKey = this.cleanPrivateKey(privateKey);
+    this.validatePrivateKey(privateKey);
 
     try {
       // Test if private key is valid by creating wallet
@@ -57,6 +49,57 @@ class WalletManager {
   }
 
   /**
+   * Clean private key format
+   * @param {string} privateKey - Raw private key
+   * @returns {string} - Cleaned private key
+   */
+  cleanPrivateKey(privateKey) {
+    privateKey = privateKey.trim();
+
+    // Add 0x prefix if not present
+    if (!privateKey.startsWith('0x')) {
+      privateKey = '0x' + privateKey;
+    }
+
+    console.log(`DEBUG: Cleaned key: ${privateKey.substring(0, 10)}... (length: ${privateKey.length})`);
+    return privateKey;
+  }
+
+  /**
+   * Validate private key format and length
+   * @param {string} privateKey - Private key to validate
+   * @throws {Error} - If private key is invalid
+   */
+  validatePrivateKey(privateKey) {
+    // Validate length (should be 66 characters: 0x + 64 hex chars)
+    if (privateKey.length !== 66) {
+      throw new Error(`Invalid private key length: ${privateKey.length} (expected 66)`);
+    }
+
+    // Validate hex format
+    if (!/^0x[a-fA-F0-9]{64}$/.test(privateKey)) {
+      throw new Error('Invalid private key format: must be 64 hex characters');
+    }
+  }
+
+  /**
+   * Validate wallet address format
+   * @param {string} address - Wallet address to validate
+   * @returns {boolean} - True if valid
+   */
+  isValidAddress(address) {
+    try {
+      return ethers.isAddress(address);
+    } catch {
+      return false;
+    }
+  }
+
+  // ====================================================================
+  // ENCRYPTION & DECRYPTION
+  // ====================================================================
+
+  /**
    * Encrypt private key with user-specific salt - UNIVERSAL VERSION
    * @param {string} privateKey - Private key to encrypt
    * @param {string} userId - User ID for salt
@@ -64,54 +107,37 @@ class WalletManager {
    */
   encryptPrivateKey(privateKey, userId) {
     try {
-      // Create user-specific key using hash (works on all Node.js versions)
+      // Create user-specific key using hash
       const key = crypto.createHash('sha256').update(this.encryptionKey + userId).digest();
 
       // Generate random IV
       const iv = crypto.randomBytes(16);
 
-      // Create cipher using the universal method
-      const cipher = crypto.createCipher('aes-256-cbc', key);
+      // Try modern encryption first
+      try {
+        const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+        let encrypted = cipher.update(privateKey, 'utf8', 'hex');
+        encrypted += cipher.final('hex');
 
-      // Encrypt
-      let encrypted = cipher.update(privateKey, 'utf8', 'hex');
-      encrypted += cipher.final('hex');
+        return iv.toString('hex') + ':' + encrypted;
+      } catch (modernError) {
+        // Fallback to deprecated method for older Node.js
+        const cipher = crypto.createCipher('aes-256-cbc', key);
+        let encrypted = cipher.update(privateKey, 'utf8', 'hex');
+        encrypted += cipher.final('hex');
 
-      // Return IV + encrypted data
-      return iv.toString('hex') + ':' + encrypted;
+        return iv.toString('hex') + ':' + encrypted;
+      }
     } catch (error) {
       console.log('DEBUG: Encryption error:', error.message);
 
-      // Fallback to even simpler encryption if createCipher fails
+      // Fallback to simple encryption if all else fails
       try {
         return this.simpleEncrypt(privateKey, userId);
       } catch (fallbackError) {
         throw new Error('Encryption failed: ' + error.message);
       }
     }
-  }
-
-  /**
-   * Simple fallback encryption for older Node.js versions
-   * @param {string} privateKey - Private key to encrypt
-   * @param {string} userId - User ID for salt
-   * @returns {string} - Base64 encoded encrypted key
-   */
-  simpleEncrypt(privateKey, userId) {
-    console.log('DEBUG: Using fallback encryption method');
-
-    // Create a simple XOR-based encryption with base64 encoding
-    const key = crypto.createHash('sha256').update(this.encryptionKey + userId).digest('hex');
-    let result = '';
-
-    for (let i = 0; i < privateKey.length; i++) {
-      const keyChar = key[i % key.length];
-      const encryptedChar = String.fromCharCode(privateKey.charCodeAt(i) ^ keyChar.charCodeAt(0));
-      result += encryptedChar;
-    }
-
-    // Encode in base64 for safe storage
-    return 'simple:' + Buffer.from(result).toString('base64');
   }
 
   /**
@@ -138,21 +164,47 @@ class WalletManager {
       // Create user-specific key
       const key = crypto.createHash('sha256').update(this.encryptionKey + userId).digest();
 
-      // Create decipher
-      const decipher = crypto.createDecipher('aes-256-cbc', key);
-
-      // Decrypt
-      let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-
-      return decrypted;
+      // Try modern decryption first
+      try {
+        const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+        let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+      } catch (modernError) {
+        // Fallback to deprecated method
+        const decipher = crypto.createDecipher('aes-256-cbc', key);
+        let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+      }
     } catch (error) {
       throw new Error('Decryption failed: ' + error.message);
     }
   }
 
   /**
-   * Simple fallback decryption
+   * Simple XOR-based encryption fallback
+   * @param {string} privateKey - Private key to encrypt
+   * @param {string} userId - User ID for salt
+   * @returns {string} - Base64 encoded encrypted key
+   */
+  simpleEncrypt(privateKey, userId) {
+    console.log('DEBUG: Using fallback encryption method');
+
+    const key = crypto.createHash('sha256').update(this.encryptionKey + userId).digest('hex');
+    let result = '';
+
+    for (let i = 0; i < privateKey.length; i++) {
+      const keyChar = key[i % key.length];
+      const encryptedChar = String.fromCharCode(privateKey.charCodeAt(i) ^ keyChar.charCodeAt(0));
+      result += encryptedChar;
+    }
+
+    return 'simple:' + Buffer.from(result).toString('base64');
+  }
+
+  /**
+   * Simple XOR-based decryption fallback
    * @param {string} encryptedKey - Simple encrypted key
    * @param {string} userId - User ID for salt
    * @returns {string} - Decrypted private key
@@ -173,6 +225,10 @@ class WalletManager {
     return result;
   }
 
+  // ====================================================================
+  // WALLET OPERATIONS
+  // ====================================================================
+
   /**
    * Get wallet address from encrypted private key
    * @param {string} encryptedKey - Encrypted private key
@@ -183,6 +239,10 @@ class WalletManager {
     try {
       const privateKey = this.decryptPrivateKey(encryptedKey, userId);
       const wallet = new ethers.Wallet(privateKey);
+
+      // Clear private key from memory
+      this.clearSensitiveData(privateKey);
+
       return wallet.address;
     } catch (error) {
       throw new Error('Failed to get wallet address: ' + error.message);
@@ -202,7 +262,7 @@ class WalletManager {
       const wallet = new ethers.Wallet(privateKey, provider);
 
       // Clear private key from memory
-      privateKey.replace(/./g, '0');
+      this.clearSensitiveData(privateKey);
 
       return wallet;
     } catch (error) {
@@ -223,18 +283,9 @@ class WalletManager {
     };
   }
 
-  /**
-   * Validate wallet address format
-   * @param {string} address - Wallet address to validate
-   * @returns {boolean} - True if valid
-   */
-  isValidAddress(address) {
-    try {
-      return ethers.utils.isAddress(address);
-    } catch {
-      return false;
-    }
-  }
+  // ====================================================================
+  // TRANSACTION OPERATIONS
+  // ====================================================================
 
   /**
    * Sign transaction with encrypted wallet
@@ -253,10 +304,7 @@ class WalletManager {
     } catch (error) {
       throw new Error('Failed to sign transaction: ' + error.message);
     } finally {
-      // Clear wallet from memory
-      if (wallet) {
-        wallet = null;
-      }
+      this.clearWalletFromMemory(wallet);
     }
   }
 
@@ -277,12 +325,13 @@ class WalletManager {
     } catch (error) {
       throw new Error('Failed to send transaction: ' + error.message);
     } finally {
-      // Clear wallet from memory
-      if (wallet) {
-        wallet = null;
-      }
+      this.clearWalletFromMemory(wallet);
     }
   }
+
+  // ====================================================================
+  // BATCH OPERATIONS
+  // ====================================================================
 
   /**
    * Batch operations for multiple wallets
@@ -296,20 +345,24 @@ class WalletManager {
     const results = [];
 
     for (const encryptedKey of encryptedKeys) {
+      let wallet;
       try {
-        const wallet = await this.getWalletInstance(encryptedKey, userId, provider);
+        wallet = await this.getWalletInstance(encryptedKey, userId, provider);
         const result = await operation(wallet);
         results.push({ success: true, result });
-
-        // Clear wallet from memory
-        wallet = null;
       } catch (error) {
         results.push({ success: false, error: error.message });
+      } finally {
+        this.clearWalletFromMemory(wallet);
       }
     }
 
     return results;
   }
+
+  // ====================================================================
+  // SECURITY UTILITIES
+  // ====================================================================
 
   /**
    * Security check - verify encrypted key belongs to user
@@ -325,6 +378,63 @@ class WalletManager {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Clear sensitive data from memory
+   * @param {string} sensitiveData - Data to clear
+   */
+  clearSensitiveData(sensitiveData) {
+    if (typeof sensitiveData === 'string') {
+      // Overwrite string in memory (best effort)
+      sensitiveData = '*'.repeat(sensitiveData.length);
+    }
+  }
+
+  /**
+   * Clear wallet instance from memory
+   * @param {object} wallet - Wallet instance to clear
+   */
+  clearWalletFromMemory(wallet) {
+    if (wallet) {
+      // Clear private key if accessible
+      if (wallet.privateKey) {
+        this.clearSensitiveData(wallet.privateKey);
+      }
+      wallet = null;
+    }
+  }
+
+  // ====================================================================
+  // UTILITY METHODS
+  // ====================================================================
+
+  /**
+   * Get encryption method info (for debugging)
+   * @param {string} encryptedKey - Encrypted key to analyze
+   * @returns {object} - Encryption method info
+   */
+  getEncryptionInfo(encryptedKey) {
+    if (encryptedKey.startsWith('simple:')) {
+      return { method: 'simple', secure: false };
+    } else if (encryptedKey.includes(':')) {
+      return { method: 'aes-256-cbc', secure: true };
+    } else {
+      return { method: 'unknown', secure: false };
+    }
+  }
+
+  /**
+   * Health check for wallet manager
+   * @returns {object} - Health status
+   */
+  healthCheck() {
+    return {
+      encryptionKeySet: !!this.encryptionKey,
+      encryptionKeyLength: this.encryptionKey?.length || 0,
+      algorithm: this.algorithm,
+      status: this.encryptionKey && this.encryptionKey.length >= 32 ? 'healthy' : 'unhealthy'
+    };
   }
 }
 

@@ -6,7 +6,18 @@
   "solWallets": [],
   "activeEthWallet": 0,
   "activeSolWallet": 0,
-  "transactions": [],
+  "transactions": [
+    {
+      "type": "buy",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "amount": "0.01",
+      "feeAmount": "0.0001",
+      "txHash": "0x6e84a4fa29ece10d563e5219ae2ac8a2015ada93bf34da605a945929d4a204b6",
+      "feeHash": "0xef4934171294ef841d01411a05ea8295d0bd28c478e3373f47db15daa7780cc0",
+      "timestamp": 1751186701945,
+      "chain": "ethereum"
+    }
+  ],
   "settings": {
     "slippage": 3,
     "gasMultiplier": 1.2,
@@ -18,5 +29,5 @@
     "expiresAt": 0
   },
   "createdAt": 1751184344631,
-  "lastActive": 1751184344631
+  "lastActive": 1751186701946
 }

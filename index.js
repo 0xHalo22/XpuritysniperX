@@ -116,7 +116,7 @@ async function getWalletForTrading(userId, userData) {
     }
 
     const address = await walletManager.getWalletAddress(encryptedKey, userId);
-    const privateKey = await walletManager.decryptWallet(encryptedKey, userId);
+    const privateKey = await walletManager.decryptPrivateKey(encryptedKey, userId);
 
     return {
       address: address,
@@ -556,11 +556,11 @@ async function showEthBuyReview(ctx, tokenAddress, amount) {
     const gasEstimate = await ethChain.estimateSwapGas(
       ethChain.contracts.WETH,
       tokenAddress,
-      ethers.parseEther(netTradeAmount.toString()),
+      ethers.utils.parseEther(netTradeAmount.toString()),
       wallet.address
     );
 
-    const gasInEth = parseFloat(ethers.formatEther(gasEstimate.totalCost));
+    const gasInEth = parseFloat(ethers.utils.formatEther(gasEstimate.totalCost));
     const totalCost = amountFloat + gasInEth;
 
     // Get current ETH balance
@@ -592,10 +592,10 @@ Please reduce the amount or add more ETH to your wallet.`,
     const quote = await ethChain.getSwapQuote(
       ethChain.contracts.WETH,
       tokenAddress,
-      ethers.parseEther(netTradeAmount.toString())
+      ethers.utils.parseEther(netTradeAmount.toString())
     );
 
-    const expectedTokens = ethers.formatUnits(quote.outputAmount, tokenInfo.decimals);
+    const expectedTokens = ethers.utils.formatUnits(quote.outputAmount, tokenInfo.decimals);
 
     const keyboard = [
       [{ text: '✅ Confirm Purchase', callback_data: `eth_buy_execute_${tokenAddress}_${amount}` }],
@@ -675,7 +675,7 @@ bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
     const swapResult = await ethChain.executeSwap(
       ethChain.contracts.WETH,
       tokenAddress,
-      ethers.parseEther(netTradeAmount.toString()),
+      ethers.utils.parseEther(netTradeAmount.toString()),
       wallet.privateKey,
       3 // 3% slippage
     );
@@ -686,7 +686,7 @@ bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
       try {
         await ctx.editMessageText('⏳ **Processing service fee...**');
         feeResult = await ethChain.collectFee(
-          ethers.parseEther(feeAmount.toString()),
+          ethers.utils.parseEther(feeAmount.toString()),
           wallet.privateKey
         );
       } catch (feeError) {
@@ -718,7 +718,7 @@ bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
 
 **Trade Summary:**
 • Spent: ${netTradeAmount} ETH + ${feeAmount.toFixed(6)} ETH fee
-• Gas Used: ~${ethers.formatEther(swapResult.gasUsed || '0')} ETH
+• Gas Used: ~${ethers.utils.formatEther(swapResult.gasUsed || '0')} ETH
 • Status: Confirmed ✅
 
 ${feeResult ? `**Fee Transaction:** [View](https://etherscan.io/tx/${feeResult.hash})` : '**Fee:** Processed separately'}
@@ -956,7 +956,7 @@ async function showEthSellAmountSelection(ctx, tokenAddress) {
     // Get token info and balance
     const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
     const tokenBalance = await ethChain.getTokenBalance(tokenAddress, address);
-    const balanceFormatted = ethers.formatUnits(tokenBalance, tokenInfo.decimals);
+    const balanceFormatted = ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals);
 
     if (parseFloat(balanceFormatted) === 0) {
       await ctx.editMessageText(
@@ -1072,7 +1072,7 @@ async function showEthSellReview(ctx, tokenAddress, amount, amountType = 'percen
     // Get token info and balance
     const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
     const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
-    const balanceFormatted = parseFloat(ethers.formatUnits(tokenBalance, tokenInfo.decimals));
+    const balanceFormatted = parseFloat(ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals));
 
     // Calculate sell amount
     let sellAmount;
@@ -1102,7 +1102,7 @@ Please reduce the amount.`,
       return;
     }
 
-    const sellAmountWei = ethers.parseUnits(sellAmount.toString(), tokenInfo.decimals);
+    const sellAmountWei = ethers.utils.parseUnits(sellAmount.toString(), tokenInfo.decimals);
 
     // Get swap quote
     const quote = await ethChain.getSwapQuote(
@@ -1111,7 +1111,7 @@ Please reduce the amount.`,
       sellAmountWei
     );
 
-    const expectedEth = parseFloat(ethers.formatEther(quote.outputAmount));
+    const expectedEth = parseFloat(ethers.utils.formatEther(quote.outputAmount));
 
     // Calculate fees
     const feePercent = userData.premium?.active ? 0.5 : 1.0;
@@ -1126,7 +1126,7 @@ Please reduce the amount.`,
       wallet.address
     );
 
-    const gasInEth = parseFloat(ethers.formatEther(gasEstimate.totalCost));
+    const gasInEth = parseFloat(ethers.utils.formatEther(gasEstimate.totalCost));
     const finalReceiveAmount = netReceiveAmount - gasInEth;
 
     const keyboard = [
@@ -1375,11 +1375,11 @@ async function showEthBuyReviewReply(ctx, tokenAddress, amount) {
     const gasEstimate = await ethChain.estimateSwapGas(
       ethChain.contracts.WETH,
       tokenAddress,
-      ethers.parseEther(netTradeAmount.toString()),
+      ethers.utils.parseEther(netTradeAmount.toString()),
       wallet.address
     );
 
-    const gasInEth = parseFloat(ethers.formatEther(gasEstimate.totalCost));
+    const gasInEth = parseFloat(ethers.utils.formatEther(gasEstimate.totalCost));
     const totalCost = amountFloat + gasInEth;
 
     // Get current ETH balance
@@ -1418,10 +1418,10 @@ Please reduce the amount or add more ETH to your wallet.`,
     const quote = await ethChain.getSwapQuote(
       ethChain.contracts.WETH,
       tokenAddress,
-      ethers.parseEther(netTradeAmount.toString())
+      ethers.utils.parseEther(netTradeAmount.toString())
     );
 
-    const expectedTokens = ethers.formatUnits(quote.outputAmount, tokenInfo.decimals);
+    const expectedTokens = ethers.utils.formatUnits(quote.outputAmount, tokenInfo.decimals);
 
     const keyboard = [
       [{ text: '✅ Confirm Purchase', callback_data: `eth_buy_execute_${tokenAddress}_${amount}` }],
@@ -1532,7 +1532,7 @@ async function showEthSellAmountSelectionReply(ctx, tokenAddress) {
     // Get token info and balance
     const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
     const tokenBalance = await ethChain.getTokenBalance(tokenAddress, address);
-    const balanceFormatted = ethers.formatUnits(tokenBalance, tokenInfo.decimals);
+    const balanceFormatted = ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals);
 
     if (parseFloat(balanceFormatted) === 0) {
       await ctx.reply(
@@ -1696,7 +1696,7 @@ async function getTokenHoldings(walletAddress) {
         const balance = await ethChain.getTokenBalance(tokenAddress, walletAddress);
         const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
 
-        const balanceFormatted = parseFloat(ethers.formatUnits(balance, tokenInfo.decimals));
+        const balanceFormatted = parseFloat(ethers.utils.formatUnits(balance, tokenInfo.decimals));
 
         if (balanceFormatted > 0) {
           holdings.push({
