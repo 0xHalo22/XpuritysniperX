@@ -1,0 +1,22 @@
+{
+  "userId": "1445251170",
+  "ethWallets": [
+    "simple:B0xVVAFQAQJZBVIECFUKXQQEAVAKBgJZCQ5RXQYFBAEADwRTUwQMUwhWBQ4EWwsAVFQCVA0CAVYAUFwKDlpXU1QF"
+  ],
+  "solWallets": [],
+  "activeEthWallet": 0,
+  "activeSolWallet": 0,
+  "transactions": [],
+  "settings": {
+    "slippage": 3,
+    "gasMultiplier": 1.2,
+    "snipeStrategy": "new_pairs"
+  },
+  "mirrorTargets": [],
+  "premium": {
+    "active": false,
+    "expiresAt": 0
+  },
+  "createdAt": 1751184344631,
+  "lastActive": 1751184344631
+}

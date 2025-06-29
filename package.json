@@ -21,18 +21,18 @@
   "author": "7 7",
   "license": "MIT",
   "dependencies": {
-    "telegraf": "^4.16.3",
-    "ethers": "^5.7.2",
-    "@uniswap/sdk-core": "^4.2.1",
-    "@uniswap/v3-sdk": "^3.11.2",
-    "@uniswap/smart-order-router": "^3.23.0",
-    "@solana/web3.js": "^1.87.6",
     "@solana/spl-token": "^0.3.9",
+    "@solana/web3.js": "^1.87.6",
+    "@uniswap/sdk-core": "^4.2.1",
+    "@uniswap/smart-order-router": "^3.59.0",
+    "@uniswap/v3-sdk": "^3.11.2",
     "bs58": "^5.0.0",
     "dotenv": "^16.4.1",
+    "ethers": "^5.7.2",
     "express": "^4.18.2",
-    "winston": "^3.11.0",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "telegraf": "^4.16.3",
+    "winston": "^3.11.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"

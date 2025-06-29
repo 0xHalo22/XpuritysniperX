@@ -12,13 +12,14 @@ class EthChain {
 
     // Common token addresses
     this.tokens = {
-      WETH: '0xC02aaA39b223FE8c0A89a5c4c8bE2b2d6e3b0aEc',
-      USDC: '0xA0b86a33E6b3b4e94b566a7e4e6A8C8FbC8c8B8d',
+      WETH: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+      USDC: '0xA0b86a33E6417b8e84eec1b98d29A1b46e62F1e8',
       USDT: '0xdAC17F958D2ee523a2206206994597C13D831ec7'
     };
 
     // Uniswap contract addresses
     this.contracts = {
+      WETH: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
       UNISWAP_V2_ROUTER: '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D',
       UNISWAP_V3_ROUTER: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
       UNISWAP_V2_FACTORY: '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f',
@@ -105,6 +106,15 @@ class EthChain {
     } catch (error) {
       throw new Error(`Failed to get balance: ${error.message}`);
     }
+  }
+
+  /**
+   * Get ETH balance for an address (alias for compatibility)
+   * @param {string} address - Wallet address
+   * @returns {string} - Balance in ETH
+   */
+  async getETHBalance(address) {
+    return await this.getBalance(address);
   }
 
   /**
@@ -200,27 +210,77 @@ class EthChain {
   }
 
   /**
-   * Get token balance for an address
-   * @param {string} tokenAddress - Token contract address
-   * @param {string} walletAddress - Wallet address
-   * @returns {object} - Token balance info
+   * Get token balance for a wallet (returns BigInt for compatibility)
+   * @param {string} tokenAddress - Token contract address  
+   * @param {string} walletAddress - Wallet address to check
+   * @returns {BigInt} Token balance in wei
    */
   async getTokenBalance(tokenAddress, walletAddress) {
     try {
       const provider = await this.getProvider();
-      const erc20Abi = ['function balanceOf(address) view returns (uint256)'];
-      const contract = new ethers.Contract(tokenAddress, erc20Abi, provider);
+      const tokenContract = new ethers.Contract(
+        tokenAddress,
+        ['function balanceOf(address) view returns (uint256)'],
+        provider
+      );
 
-      const balance = await contract.balanceOf(walletAddress);
-      const tokenInfo = await this.getTokenInfo(tokenAddress);
-
-      return {
-        raw: balance.toString(),
-        formatted: ethers.utils.formatUnits(balance, tokenInfo.decimals),
-        token: tokenInfo
-      };
+      return await tokenContract.balanceOf(walletAddress);
     } catch (error) {
       throw new Error(`Failed to get token balance: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get token allowance for spender
+   * @param {string} tokenAddress - Token contract address
+   * @param {string} owner - Owner wallet address
+   * @param {string} spender - Spender contract address
+   * @returns {BigInt} Allowance amount
+   */
+  async getTokenAllowance(tokenAddress, owner, spender) {
+    try {
+      const provider = await this.getProvider();
+      const tokenContract = new ethers.Contract(
+        tokenAddress,
+        ['function allowance(address,address) view returns (uint256)'],
+        provider
+      );
+
+      return await tokenContract.allowance(owner, spender);
+    } catch (error) {
+      throw new Error(`Failed to get token allowance: ${error.message}`);
+    }
+  }
+
+  /**
+   * Approve token for spending
+   * @param {string} tokenAddress - Token contract address
+   * @param {string} spender - Spender contract address  
+   * @param {BigInt} amount - Amount to approve
+   * @param {string} privateKey - Wallet private key
+   * @returns {TransactionResponse} Transaction response
+   */
+  async approveToken(tokenAddress, spender, amount, privateKey) {
+    try {
+      const provider = await this.getProvider();
+      const wallet = new ethers.Wallet(privateKey, provider);
+
+      const tokenContract = new ethers.Contract(
+        tokenAddress,
+        ['function approve(address,uint256) returns (bool)'],
+        wallet
+      );
+
+      // Use max uint256 for unlimited approval to save gas on future trades
+      const maxApproval = ethers.constants.MaxUint256;
+
+      const transaction = await tokenContract.approve(spender, maxApproval);
+
+      console.log(`Token approval sent: ${transaction.hash}`);
+      return transaction;
+
+    } catch (error) {
+      throw new Error(`Failed to approve token: ${error.message}`);
     }
   }
 
@@ -242,11 +302,11 @@ class EthChain {
   }
 
   /**
-   * Get quote for token swap
-   * @param {string} tokenIn - Input token address (use 'ETH' for native ETH)
-   * @param {string} tokenOut - Output token address
-   * @param {string} amountIn - Amount to swap (in token units)
-   * @returns {object} - Swap quote
+   * Get swap quote using Uniswap Alpha Router
+   * @param {string} tokenIn - Input token address
+   * @param {string} tokenOut - Output token address  
+   * @param {BigInt} amountIn - Input amount in wei
+   * @returns {Object} Quote object with outputAmount and route
    */
   async getSwapQuote(tokenIn, tokenOut, amountIn) {
     try {
@@ -254,96 +314,257 @@ class EthChain {
         await this.initializeRouter();
       }
 
-      // Handle ETH as input
-      if (tokenIn.toLowerCase() === 'eth') {
+      // Handle WETH properly
+      if (tokenIn === this.contracts.WETH || tokenIn.toLowerCase() === 'eth') {
         tokenIn = this.tokens.WETH;
       }
+      if (tokenOut === this.contracts.WETH || tokenOut.toLowerCase() === 'eth') {
+        tokenOut = this.tokens.WETH;
+      }
 
-      // Create token instances
+      // Get token info
       const tokenInInfo = await this.getTokenInfo(tokenIn);
       const tokenOutInfo = await this.getTokenInfo(tokenOut);
 
-      const tokenInInstance = new Token(
-        this.chainId,
-        tokenIn,
-        tokenInInfo.decimals,
-        tokenInInfo.symbol,
-        tokenInInfo.name
-      );
+      const tokenInObj = new Token(this.chainId, tokenIn, tokenInInfo.decimals, tokenInInfo.symbol, tokenInInfo.name);
+      const tokenOutObj = new Token(this.chainId, tokenOut, tokenOutInfo.decimals, tokenOutInfo.symbol, tokenOutInfo.name);
 
-      const tokenOutInstance = new Token(
-        this.chainId,
-        tokenOut,
-        tokenOutInfo.decimals,
-        tokenOutInfo.symbol,
-        tokenOutInfo.name
-      );
-
-      // Create amount
-      const amount = CurrencyAmount.fromRawAmount(
-        tokenInInstance,
-        ethers.utils.parseUnits(amountIn, tokenInInfo.decimals).toString()
-      );
+      // Create currency amount
+      const currencyAmount = CurrencyAmount.fromRawAmount(tokenInObj, amountIn.toString());
 
       // Get route
       const route = await this.router.route(
-        amount,
-        tokenOutInstance,
+        currencyAmount,
+        tokenOutObj,
         TradeType.EXACT_INPUT,
         {
-          recipient: '0x0000000000000000000000000000000000000000', // Placeholder
+          recipient: ethers.constants.AddressZero, // Will be replaced with actual recipient
           slippageTolerance: new Percent(300, 10000), // 3%
           deadline: Math.floor(Date.now() / 1000) + 60 * 20 // 20 minutes
         }
       );
 
       if (!route) {
-        throw new Error('No route found for this swap');
+        throw new Error('No route found for this trade');
       }
 
       return {
-        amountIn: amountIn,
-        amountOut: route.quote.toFixed(),
-        priceImpact: route.estimatedGasUsed?.toString(),
+        outputAmount: BigInt(route.quote.quotient.toString()),
         route: route,
-        tokenIn: tokenInInfo,
-        tokenOut: tokenOutInfo
+        gas: route.estimatedGasUsed?.toString() || '200000'
       };
+
     } catch (error) {
-      throw new Error(`Swap quote failed: ${error.message}`);
+      throw new Error(`Failed to get swap quote: ${error.message}`);
     }
   }
 
   /**
    * Execute token swap
-   * @param {object} wallet - Connected wallet instance
    * @param {string} tokenIn - Input token address
    * @param {string} tokenOut - Output token address
-   * @param {string} amountIn - Amount to swap
-   * @param {number} slippage - Slippage tolerance (default 3%)
-   * @returns {object} - Transaction receipt
+   * @param {BigInt} amountIn - Input amount in wei
+   * @param {string} privateKey - Wallet private key
+   * @param {number} slippagePercent - Slippage tolerance percentage
+   * @returns {TransactionResponse} Transaction response
    */
-  async executeSwap(wallet, tokenIn, tokenOut, amountIn, slippage = 3) {
+  async executeSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3) {
     try {
+      const provider = await this.getProvider();
+      const wallet = new ethers.Wallet(privateKey, provider);
+
+      // Get quote
       const quote = await this.getSwapQuote(tokenIn, tokenOut, amountIn);
 
-      if (!quote.route) {
-        throw new Error('No valid route found');
+      // Calculate minimum output with slippage
+      const slippageBps = slippagePercent * 100; // Convert to basis points
+      const minOutput = quote.outputAmount * BigInt(10000 - slippageBps) / BigInt(10000);
+
+      // Build transaction data based on token types
+      let transaction;
+
+      if (tokenIn === this.tokens.WETH || tokenIn === this.contracts.WETH) {
+        // ETH to Token swap
+        transaction = await this.buildETHToTokenSwap(tokenOut, amountIn, minOutput, wallet.address);
+      } else if (tokenOut === this.tokens.WETH || tokenOut === this.contracts.WETH) {
+        // Token to ETH swap  
+        transaction = await this.buildTokenToETHSwap(tokenIn, amountIn, minOutput, wallet.address);
+      } else {
+        // Token to Token swap
+        transaction = await this.buildTokenToTokenSwap(tokenIn, tokenOut, amountIn, minOutput, wallet.address);
       }
 
-      // Execute the swap using the route
-      const transaction = {
-        to: quote.route.methodParameters.to,
-        data: quote.route.methodParameters.calldata,
-        value: quote.route.methodParameters.value,
-        gasLimit: quote.route.estimatedGasUsed
-      };
+      // Add gas settings
+      const gasEstimate = await provider.estimateGas(transaction);
+      transaction.gasLimit = gasEstimate.mul(120).div(100); // 20% buffer
+      transaction.gasPrice = await provider.getGasPrice();
 
       // Send transaction
       const txResponse = await wallet.sendTransaction(transaction);
-      return await txResponse.wait();
+      console.log(`Swap executed: ${txResponse.hash}`);
+
+      return txResponse;
+
     } catch (error) {
-      throw new Error(`Swap execution failed: ${error.message}`);
+      throw new Error(`Failed to execute swap: ${error.message}`);
+    }
+  }
+
+  /**
+   * Build ETH to Token swap transaction
+   */
+  async buildETHToTokenSwap(tokenOut, amountIn, minOutput, recipient) {
+    const routerAbi = [
+      'function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) external payable returns (uint[] memory amounts)'
+    ];
+
+    const path = [this.tokens.WETH, tokenOut];
+    const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
+
+    const iface = new ethers.utils.Interface(routerAbi);
+    const data = iface.encodeFunctionData('swapExactETHForTokens', [
+      minOutput,
+      path,
+      recipient,
+      deadline
+    ]);
+
+    return {
+      to: this.contracts.UNISWAP_V2_ROUTER,
+      value: amountIn,
+      data: data
+    };
+  }
+
+  /**
+   * Build Token to ETH swap transaction  
+   */
+  async buildTokenToETHSwap(tokenIn, amountIn, minOutput, recipient) {
+    const routerAbi = [
+      'function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts)'
+    ];
+
+    const path = [tokenIn, this.tokens.WETH];
+    const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
+
+    const iface = new ethers.utils.Interface(routerAbi);
+    const data = iface.encodeFunctionData('swapExactTokensForETH', [
+      amountIn,
+      minOutput,
+      path,
+      recipient,
+      deadline
+    ]);
+
+    return {
+      to: this.contracts.UNISWAP_V2_ROUTER,
+      value: 0,
+      data: data
+    };
+  }
+
+  /**
+   * Build Token to Token swap transaction
+   */
+  async buildTokenToTokenSwap(tokenIn, tokenOut, amountIn, minOutput, recipient) {
+    const routerAbi = [
+      'function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts)'
+    ];
+
+    const path = [tokenIn, this.tokens.WETH, tokenOut]; // Route through WETH
+    const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
+
+    const iface = new ethers.utils.Interface(routerAbi);
+    const data = iface.encodeFunctionData('swapExactTokensForTokens', [
+      amountIn,
+      minOutput,
+      path,
+      recipient,
+      deadline
+    ]);
+
+    return {
+      to: this.contracts.UNISWAP_V2_ROUTER,
+      value: 0,
+      data: data
+    };
+  }
+
+  /**
+   * Estimate gas for swap transaction
+   * @param {string} tokenIn - Input token address
+   * @param {string} tokenOut - Output token address
+   * @param {BigInt} amountIn - Input amount
+   * @param {string} recipient - Recipient address
+   * @returns {Object} Gas estimate with limit and price
+   */
+  async estimateSwapGas(tokenIn, tokenOut, amountIn, recipient) {
+    try {
+      const provider = await this.getProvider();
+
+      // Build transaction for estimation
+      let transaction;
+      if (tokenIn === this.tokens.WETH || tokenIn === this.contracts.WETH) {
+        transaction = await this.buildETHToTokenSwap(tokenOut, amountIn, BigInt(0), recipient);
+      } else {
+        transaction = await this.buildTokenToETHSwap(tokenIn, amountIn, BigInt(0), recipient);
+      }
+
+      const gasEstimate = await provider.estimateGas({
+        ...transaction,
+        from: recipient
+      });
+
+      const gasPrice = await provider.getGasPrice();
+
+      return {
+        gasLimit: gasEstimate.mul(120).div(100), // 20% buffer
+        gasPrice: gasPrice,
+        totalCost: gasEstimate.mul(120).div(100).mul(gasPrice)
+      };
+
+    } catch (error) {
+      // Return conservative estimate if exact estimation fails
+      const gasPrice = await (await this.getProvider()).getGasPrice();
+      const conservativeGas = ethers.BigNumber.from(250000); // Conservative gas limit
+
+      return {
+        gasLimit: conservativeGas,
+        gasPrice: gasPrice,
+        totalCost: conservativeGas.mul(gasPrice)
+      };
+    }
+  }
+
+  /**
+   * Collect fee to treasury
+   * @param {BigInt} feeAmount - Fee amount in wei
+   * @param {string} privateKey - User's private key
+   * @returns {TransactionResponse} Transaction response
+   */
+  async collectFee(feeAmount, privateKey) {
+    try {
+      const provider = await this.getProvider();
+      const wallet = new ethers.Wallet(privateKey, provider);
+
+      const treasuryWallet = process.env.TREASURY_WALLET;
+      if (!treasuryWallet) {
+        throw new Error('Treasury wallet not configured');
+      }
+
+      const transaction = {
+        to: treasuryWallet,
+        value: feeAmount,
+        gasLimit: 21000 // Standard ETH transfer
+      };
+
+      const txResponse = await wallet.sendTransaction(transaction);
+      console.log(`Fee collection sent: ${txResponse.hash}`);
+      return txResponse;
+    } catch (error) {
+      console.log('Fee collection failed:', error.message);
+      // Don't throw - fee collection failure shouldn't block user transaction
+      return null;
     }
   }
 
