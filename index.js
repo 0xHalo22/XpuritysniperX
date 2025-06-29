@@ -1,6 +1,5 @@
 // ====================================================================
-// PURITY SNIPER BOT - COMPLETE REFACTORED VERSION
-// PART 1 OF 4: INITIALIZATION & CORE SETUP
+// PURITY SNIPER BOT 
 // ====================================================================
 
 require('dotenv').config();
@@ -26,7 +25,7 @@ const ethChain = new EthChain();
 // User state management for multi-step interactions
 const userStates = new Map();
 
-// ✅ NEW: Token mapping for shorter button data
+// Token mapping for shorter button data
 const tokenMappings = new Map();
 
 function createShortTokenId(tokenAddress) {
@@ -121,14 +120,11 @@ async function saveUserData(userId, userData) {
 }
 
 // ====================================================================
-// WALLET HELPER FUNCTIONS - FIXED FOR CORRECT MANAGER CALLS
+// WALLET HELPER FUNCTIONS
 // ====================================================================
 
 /**
- * Get wallet for trading operations - FIXED VERSION
- * @param {string} userId - User ID
- * @param {object} userData - User data object
- * @returns {object} - Wallet object with address and privateKey
+ * Get wallet for trading operations
  */
 async function getWalletForTrading(userId, userData) {
   try {
@@ -151,10 +147,7 @@ async function getWalletForTrading(userId, userData) {
 }
 
 /**
- * Get wallet address only - FIXED VERSION
- * @param {string} userId - User ID
- * @param {object} userData - User data object
- * @returns {string} - Wallet address
+ * Get wallet address only
  */
 async function getWalletAddress(userId, userData) {
   try {
@@ -273,7 +266,122 @@ Choose your action:`,
 }
 
 // ====================================================================
-// PART 2 OF 4: ETH WALLET MANAGEMENT & BUY TOKEN FUNCTIONALITY
+// UTILITY FUNCTIONS
+// ====================================================================
+
+// Helper function to record transaction
+async function recordTransaction(userId, transactionData) {
+  try {
+    const userData = await loadUserData(userId);
+
+    if (!userData.transactions) {
+      userData.transactions = [];
+    }
+
+    userData.transactions.push(transactionData);
+
+    // Keep only last 100 transactions
+    if (userData.transactions.length > 100) {
+      userData.transactions = userData.transactions.slice(-100);
+    }
+
+    await saveUserData(userId, userData);
+
+  } catch (error) {
+    console.log('Error recording transaction:', error);
+  }
+}
+
+// Helper function to track revenue
+async function trackRevenue(feeAmount) {
+  try {
+    // Log to revenue tracking system
+    const revenueData = {
+      amount: feeAmount,
+      currency: 'ETH',
+      timestamp: Date.now(),
+      type: 'trading_fee'
+    };
+
+    logger.info('Revenue collected:', revenueData);
+
+  } catch (error) {
+    console.log('Error tracking revenue:', error);
+  }
+}
+
+// ====================================================================
+// PLACEHOLDER HANDLERS (Future Features)
+// ====================================================================
+
+bot.action('eth_snipe', async (ctx) => {
+  await ctx.editMessageText(
+    '🔗 **ETH SNIPE TOKEN**\n\nComing soon! This will monitor new Uniswap pairs for sniping.',
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }
+        ]]
+      }
+    }
+  );
+});
+
+bot.action('eth_mirror', async (ctx) => {
+  await ctx.editMessageText(
+    '🔗 **ETH MIRROR WALLET**\n\nComing soon! This will copy trades from target wallets.',
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }
+        ]]
+      }
+    }
+  );
+});
+
+// SOL Chain handlers (placeholders)
+bot.action('sol_wallet', async (ctx) => {
+  await ctx.editMessageText(
+    '🟣 **SOL WALLET**\n\nComing soon! SOL wallet management.',
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+        ]]
+      }
+    }
+  );
+});
+
+bot.action('statistics', async (ctx) => {
+  await ctx.editMessageText(
+    '📊 **STATISTICS**\n\nComing soon! View your trading stats and bot performance.',
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to Home', callback_data: 'main_menu' }
+        ]]
+      }
+    }
+  );
+});
+
+bot.action('settings', async (ctx) => {
+  await ctx.editMessageText(
+    '⚙️ **SETTINGS**\n\nComing soon! Configure slippage, gas settings, and more.',
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to Home', callback_data: 'main_menu' }
+        ]]
+      }
+    }
+  );
+});
+
+// ====================================================================
+// ETH WALLET MANAGEMENT - YOUR WORKING CODE
 // ====================================================================
 
 // ETH Wallet main handler
@@ -305,12 +413,11 @@ No ETH wallets found. Import your private key to get started.
   );
 }
 
-// FIXED: showEthWalletManagement function
+// Your working showEthWalletManagement function
 async function showEthWalletManagement(ctx, userData) {
   const userId = ctx.from.id.toString();
 
   try {
-    // ✅ FIXED: Use proper getWalletAddress function
     const address = await getWalletAddress(userId, userData);
     const balance = await ethChain.getETHBalance(address);
 
@@ -401,8 +508,426 @@ Send your ETH private key now:`
   }, 5 * 60 * 1000);
 });
 
+// View balance handler
+bot.action('eth_view_balance', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const userData = await loadUserData(userId);
+
+  try {
+    const address = await getWalletAddress(userId, userData);
+    const balance = await ethChain.getETHBalance(address);
+
+    await ctx.editMessageText(
+      `💰 **ETH WALLET BALANCE**
+
+**Address:** ${address}
+**Balance:** ${balance} ETH
+
+**Last Updated:** ${new Date().toLocaleString()}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Refresh', callback_data: 'eth_view_balance' }],
+            [{ text: '🔙 Back to Wallet', callback_data: 'eth_wallet' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    await ctx.editMessageText(
+      `❌ **Error loading balance**
+
+${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Wallet', callback_data: 'eth_wallet' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// Transaction history handler
+bot.action('eth_tx_history', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const userData = await loadUserData(userId);
+
+  try {
+    const transactions = userData.transactions || [];
+    const ethTransactions = transactions.filter(tx => tx.chain === 'ethereum').slice(-10);
+
+    if (ethTransactions.length === 0) {
+      await ctx.editMessageText(
+        `📊 **TRANSACTION HISTORY**
+
+No ETH transactions found yet.
+
+Start trading to see your transaction history here!`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '💰 Start Trading', callback_data: 'chain_eth' }],
+              [{ text: '🔙 Back to Wallet', callback_data: 'eth_wallet' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    let historyText = `📊 **TRANSACTION HISTORY**\n\n**Last ${ethTransactions.length} ETH Transactions:**\n\n`;
+
+    ethTransactions.reverse().forEach((tx, index) => {
+      const date = new Date(tx.timestamp).toLocaleDateString();
+      const type = tx.type.toUpperCase();
+      const amount = parseFloat(tx.amount).toFixed(6);
+
+      historyText += `**${index + 1}.** ${type} - ${amount} ETH\n`;
+      historyText += `📅 ${date} | 🔗 [View](https://etherscan.io/tx/${tx.txHash})\n\n`;
+    });
+
+    await ctx.editMessageText(historyText, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Refresh', callback_data: 'eth_tx_history' }],
+          [{ text: '🔙 Back to Wallet', callback_data: 'eth_wallet' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    });
+
+  } catch (error) {
+    await ctx.editMessageText(
+      `❌ **Error loading transaction history**
+
+${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Wallet', callback_data: 'eth_wallet' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
 // ====================================================================
-// ETH BUY TOKEN - COMPLETE IMPLEMENTATION - UNCHANGED
+// GLOBAL TEXT HANDLER - YOUR WORKING VERSION
+// ====================================================================
+
+// Global text handler that checks user states
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const userState = userStates.get(userId);
+
+  if (!userState) {
+    return; // No active state for this user
+  }
+
+  console.log(`DEBUG: Processing text for user ${userId}, action: ${userState.action}`);
+
+  // Handle different actions based on user state
+  switch (userState.action) {
+    case 'wallet_import':
+      await handleWalletImport(ctx, userId);
+      break;
+    case 'token_address':
+      await handleTokenAddress(ctx, userId);
+      break;
+    case 'custom_amount':
+      await handleCustomAmount(ctx, userId, userState.tokenAddress);
+      break;
+    case 'sell_token_address':
+      await handleSellTokenAddress(ctx, userId);
+      break;
+    case 'sell_custom_amount':
+      await handleSellCustomAmount(ctx, userId, userState.tokenAddress);
+      break;
+    default:
+      userStates.delete(userId); // Clear unknown state
+  }
+});
+
+// ====================================================================
+// TEXT HANDLER HELPER FUNCTIONS
+// ====================================================================
+
+// Wallet import handler - YOUR WORKING VERSION
+async function handleWalletImport(ctx, userId) {
+  const privateKey = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    const encryptedKey = await walletManager.importWallet(privateKey, userId);
+
+    // Update user data
+    const userData = await loadUserData(userId);
+    if (!userData.ethWallets) {
+      userData.ethWallets = [];
+    }
+    userData.ethWallets.push(encryptedKey);
+    await saveUserData(userId, userData);
+
+    const address = await walletManager.getWalletAddress(encryptedKey, userId);
+
+    await ctx.reply(
+      `✅ **ETH Wallet Imported Successfully!**
+
+Address: \`${address}\`
+
+🔐 Your private key has been encrypted and stored securely.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }
+          ]]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} imported ETH wallet: ${address}`);
+
+  } catch (error) {
+    userStates.delete(userId);
+    logger.error(`ETH wallet import error for user ${userId}:`, error);
+
+    if (error.message.includes('Invalid private key')) {
+      await ctx.reply('❌ Invalid ETH private key format. Please check and try again.');
+    } else {
+      await ctx.reply(`❌ Error importing wallet: ${error.message}`);
+    }
+  }
+}
+
+// Token address handler - will process buy token addresses
+async function handleTokenAddress(ctx, userId) {
+  const tokenAddress = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format');
+    }
+
+    const validatingMessage = await ctx.reply('⏳ **Validating token...**', {
+      parse_mode: 'Markdown'
+    });
+
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+
+    // Delete the "validating" message
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, validatingMessage.message_id);
+    } catch (deleteError) {
+      // Ignore if we can't delete the message
+    }
+
+    await showEthBuyAmount(ctx, tokenAddress, tokenInfo);
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid token contract address.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'eth_buy' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+}
+
+// Custom amount handler - will process custom ETH amounts
+async function handleCustomAmount(ctx, userId, tokenAddress) {
+  const amount = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0) {
+      throw new Error('Invalid amount format');
+    }
+
+    if (amountFloat > 100) {
+      throw new Error('Amount too large (max 100 ETH)');
+    }
+
+    await showEthBuyReviewReply(ctx, tokenAddress, amount);
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid ETH amount (e.g., 0.1)`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: `eth_buy_custom_${tokenAddress}` }],
+            [{ text: '🔙 Back to Buy', callback_data: 'eth_buy' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// Sell token address handler - will process sell token addresses
+async function handleSellTokenAddress(ctx, userId) {
+  const tokenAddress = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format');
+    }
+
+    const validatingMessage = await ctx.reply('⏳ **Validating token...**', {
+      parse_mode: 'Markdown'
+    });
+
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+
+    // Delete the "validating" message
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, validatingMessage.message_id);
+    } catch (deleteError) {
+      // Ignore if we can't delete the message
+    }
+
+    // Create a new message with amount selection
+    await showEthSellAmountSelectionReply(ctx, tokenAddress);
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid token contract address.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'eth_sell_manual' }],
+            [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+}
+
+// Sell custom amount handler - will process custom token amounts
+async function handleSellCustomAmount(ctx, userId, tokenAddress) {
+  const amount = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0) {
+      throw new Error('Invalid amount format');
+    }
+
+    await showEthSellReview(ctx, tokenAddress, amountFloat, 'custom');
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid token amount (e.g., 1000)`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: `eth_sell_custom_${tokenAddress}` }],
+            [{ text: '🔙 Back to Amount Selection', callback_data: `eth_sell_select_${tokenAddress}` }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// ====================================================================
+// ERROR HANDLING & CLEANUP
+// ====================================================================
+
+// Handle any callback query errors
+bot.on('callback_query', async (ctx, next) => {
+  try {
+    await next();
+  } catch (error) {
+    console.log('Callback query error:', error);
+
+    try {
+      await ctx.answerCallbackQuery('❌ An error occurred. Please try again.');
+      await ctx.editMessageText(
+        '❌ **Something went wrong**\n\nPlease try again or return to the main menu.',
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🏠 Main Menu', callback_data: 'main_menu' }
+            ]]
+          }
+        }
+      );
+    } catch (editError) {
+      // If we can't edit, send a new message
+      await ctx.reply(
+        '❌ **Something went wrong**\n\nPlease try again or return to the main menu.',
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🏠 Main Menu', callback_data: 'main_menu' }
+            ]]
+          }
+        }
+      );
+    }
+  }
+});
+
+// Cleanup old user states every hour
+setInterval(() => {
+  const now = Date.now();
+  const oneHour = 60 * 60 * 1000;
+
+  for (const [userId, state] of userStates.entries()) {
+    if (now - state.timestamp > oneHour) {
+      userStates.delete(userId);
+      console.log(`Cleaned up old state for user ${userId}`);
+    }
+  }
+}, 60 * 60 * 1000);
+
+// ====================================================================
+// PURITY SNIPER BOT - COMPLETE WORKING REFACTOR WITH FEE-FIRST
+// PART 3/4: ETH BUY TOKEN FUNCTIONALITY WITH FEE-FIRST STRUCTURE
+// ====================================================================
+
+// ====================================================================
+// ETH BUY TOKEN - COMPLETE IMPLEMENTATION WITH FEE-FIRST
 // ====================================================================
 
 // ETH Buy Token Handler - Complete Implementation
@@ -669,7 +1194,11 @@ Please try again or contact support.`,
   }
 }
 
-// Execute the actual purchase
+// ====================================================================
+// FEE-FIRST BUY EXECUTION - THE KEY FIX
+// ====================================================================
+
+// Execute the actual purchase with FEE-FIRST structure
 bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
   const match = ctx.match;
   const tokenAddress = match[1];
@@ -680,20 +1209,71 @@ bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
     // Check rate limit again
     await checkRateLimit(userId, 'transactions');
 
-    await ctx.editMessageText('⏳ **Executing purchase...**\n\nThis may take 30-60 seconds.');
+    await ctx.editMessageText('⏳ **Starting transaction...**\n\nStep 1/2: Collecting service fee first...');
 
     const userData = await loadUserData(userId);
     // Get wallet using proper helper
     const wallet = await getWalletForTrading(userId, userData);
 
-    // Calculate amounts
-    const amountFloat = parseFloat(amount);
+    // Calculate amounts upfront
+    const totalAmount = parseFloat(amount);
     const feePercent = userData.premium?.active ? 0.5 : 1.0;
-    const feeAmount = amountFloat * (feePercent / 100);
-    const netTradeAmount = amountFloat - feeAmount;
+    const feeAmount = totalAmount * (feePercent / 100);
+    const netTradeAmount = totalAmount - feeAmount;
 
-    // Execute the main swap
-    await ctx.editMessageText('⏳ **Executing swap on Uniswap...**');
+    console.log(`💰 FEE-FIRST STRUCTURE: Total ${totalAmount} ETH, Fee ${feeAmount} ETH, Trade ${netTradeAmount} ETH`);
+
+    // ====================================================================
+    // STEP 1: COLLECT FEE FIRST (WHEN USER HAS FULL BALANCE)
+    // ====================================================================
+    let feeResult = null;
+    if (feeAmount > 0) {
+      try {
+        console.log(`💰 Collecting fee FIRST: ${feeAmount} ETH`);
+
+        feeResult = await ethChain.collectFee(
+          wallet.privateKey,
+          ethers.utils.parseEther(feeAmount.toString())
+        );
+
+        console.log(`✅ Fee collected FIRST! Hash: ${feeResult.hash}`);
+        await ctx.editMessageText('✅ **Step 1/2: Fee collected successfully!**\n\nProceeding to main trade...');
+
+        // Small delay to ensure fee transaction processes
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+      } catch (feeError) {
+        console.log(`❌ Fee collection FAILED: ${feeError.message}`);
+
+        // If fee collection fails, abort the entire transaction
+        await ctx.editMessageText(
+          `❌ **Transaction Failed - Fee Collection Issue**\n\n` +
+          `Problem: ${feeError.message}\n\n` +
+          `**Possible Solutions:**\n` +
+          `• Ensure you have enough ETH for trade (${totalAmount} ETH) + gas fees\n` +
+          `• Try a smaller amount\n` +
+          `• Check your wallet balance\n\n` +
+          `**No tokens were purchased - your funds are safe.**`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔄 Try Again', callback_data: 'eth_buy' }],
+                [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+              ]
+            }
+          }
+        );
+        return;
+      }
+    }
+
+    // ====================================================================
+    // STEP 2: EXECUTE MAIN TRADE (WITH REMAINING BALANCE)
+    // ====================================================================
+
+    await ctx.editMessageText('⏳ **Step 2/2: Executing token purchase...**\n\nSwapping on Uniswap...');
+
+    console.log(`🚀 Executing main trade: ${netTradeAmount} ETH -> ${tokenAddress}`);
 
     const swapResult = await ethChain.executeSwap(
       ethChain.contracts.WETH,
@@ -703,48 +1283,51 @@ bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
       3 // 3% slippage
     );
 
-    // Collect fee (don't block if this fails)
-    let feeResult = null;
-    if (feeAmount > 0) {
-      try {
-        await ctx.editMessageText('⏳ **Processing service fee...**');
-        feeResult = await ethChain.collectFee(
-          wallet.privateKey,
-          ethers.utils.parseEther(feeAmount.toString())
-        );
-      } catch (feeError) {
-        console.log('Fee collection failed (non-blocking):', feeError.message);
-      }
-    }
+    console.log(`✅ Main trade executed! Hash: ${swapResult.hash}`);
+
+    // ====================================================================
+    // STEP 3: RECORD SUCCESS & NOTIFY USER
+    // ====================================================================
 
     // Update user transaction history
     await recordTransaction(userId, {
       type: 'buy',
       tokenAddress,
-      amount,
+      amount: totalAmount.toString(),
+      tradeAmount: netTradeAmount.toString(),
       feeAmount: feeAmount.toString(),
       txHash: swapResult.hash,
       feeHash: feeResult?.hash || null,
       timestamp: Date.now(),
-      chain: 'ethereum'
+      chain: 'ethereum',
+      feeCollectedFirst: true // Track that we used fee-first approach
     });
 
     // Log revenue
     await trackRevenue(feeAmount);
 
-    // Success message
+    // Get token info for success message
+    let tokenSymbol = 'TOKEN';
+    try {
+      const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+      tokenSymbol = tokenInfo.symbol;
+    } catch (e) {
+      console.log('Could not get token symbol for success message');
+    }
+
+    // Success message with both transaction links
     await ctx.editMessageText(
       `✅ **PURCHASE SUCCESSFUL!**
 
-**Transaction:** [View on Etherscan](https://etherscan.io/tx/${swapResult.hash})
+**Trade Amount:** ${netTradeAmount.toFixed(6)} ETH → ${tokenSymbol}
+**Service Fee:** ${feeAmount.toFixed(6)} ETH  
+**Total Cost:** ${totalAmount.toFixed(6)} ETH
+
+**🔗 Transactions:**
+• Fee: [${feeResult?.hash?.substring(0, 10)}...](https://etherscan.io/tx/${feeResult?.hash})
+• Trade: [${swapResult.hash.substring(0, 10)}...](https://etherscan.io/tx/${swapResult.hash})
+
 **Hash:** \`${swapResult.hash}\`
-
-**Trade Summary:**
-• Spent: ${netTradeAmount} ETH + ${feeAmount.toFixed(6)} ETH fee
-• Gas Used: ~${ethers.utils.formatEther(swapResult.gasUsed || '0')} ETH
-• Status: Confirmed ✅
-
-${feeResult ? `**Fee Transaction:** [View](https://etherscan.io/tx/${feeResult.hash})` : '**Fee:** Processed separately'}
 
 🎉 Your tokens should appear in your wallet shortly!`,
       {
@@ -759,7 +1342,17 @@ ${feeResult ? `**Fee Transaction:** [View](https://etherscan.io/tx/${feeResult.h
       }
     );
 
-    logger.info(`Successful ETH buy: User ${userId}, Token ${tokenAddress}, Amount ${amount} ETH`);
+    // Enhanced logging for debugging
+    console.log(`✅ COMPLETE PURCHASE SUCCESS:`);
+    console.log(`   User: ${userId}`);
+    console.log(`   Token: ${tokenAddress}`);
+    console.log(`   Total: ${totalAmount} ETH`);
+    console.log(`   Fee: ${feeAmount} ETH (${feePercent}%)`);
+    console.log(`   Trade: ${netTradeAmount} ETH`);
+    console.log(`   Fee TX: ${feeResult?.hash}`);
+    console.log(`   Trade TX: ${swapResult.hash}`);
+
+    logger.info(`Successful ETH buy: User ${userId}, Token ${tokenAddress}, Amount ${totalAmount} ETH`);
 
   } catch (error) {
     logger.error(`ETH buy execution error for user ${userId}:`, error);
@@ -807,507 +1400,10 @@ bot.action(/^eth_buy_retry_(.+)$/, async (ctx) => {
 });
 
 // ====================================================================
-// PART 3 OF 4: ETH SELL TOKEN - COMPLETE FIXED IMPLEMENTATION
+// BUY REVIEW REPLY VERSION (for custom amounts)
 // ====================================================================
 
-// ETH Sell Token Handler - Complete Implementation with ALL FIXES
-bot.action('eth_sell', async (ctx) => {
-  const userId = ctx.from.id.toString();
-  const userData = await loadUserData(userId);
-
-  // Check if user has ETH wallet
-  if (!userData.ethWallets || userData.ethWallets.length === 0) {
-    await ctx.editMessageText(
-      `🔗 **ETH SELL TOKEN**
-
-❌ No ETH wallet found. Import a wallet first.`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '➕ Import ETH Wallet', callback_data: 'import_eth_wallet' }],
-            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
-          ]
-        }
-      }
-    );
-    return;
-  }
-
-  // Check rate limits
-  try {
-    await checkRateLimit(userId, 'transactions');
-  } catch (error) {
-    await ctx.editMessageText(`❌ ${error.message}\n\n🔙 Try again later.`);
-    return;
-  }
-
-  await showEthTokenHoldings(ctx, userId);
-});
-
-// ✅ FIXED: Show user's token holdings with transaction history detection
-async function showEthTokenHoldings(ctx, userId) {
-  try {
-    await ctx.editMessageText('⏳ **Loading your token holdings...**');
-
-    const userData = await loadUserData(userId);
-    const address = await getWalletAddress(userId, userData);
-
-    // ✅ FIX: Use updated getTokenHoldings with userId parameter
-    const tokenHoldings = await getTokenHoldings(address, userId);
-
-    if (tokenHoldings.length === 0) {
-      await ctx.editMessageText(
-        `📈 **ETH SELL TOKEN**
-
-❌ No token holdings found.
-
-This could mean:
-• You haven't bought any tokens yet
-• Your tokens haven't been detected (manual input available)
-
-💡 Try buying some tokens first, or manually enter a token address.`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '💰 Buy Tokens', callback_data: 'eth_buy' }],
-              [{ text: '🔢 Manual Token Address', callback_data: 'eth_sell_manual' }],
-              [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
-            ]
-          },
-          parse_mode: 'Markdown'
-        }
-      );
-      return;
-    }
-
-    // Create buttons for each token
-    const keyboard = [];
-    for (let i = 0; i < Math.min(tokenHoldings.length, 8); i++) {
-      const token = tokenHoldings[i];
-      keyboard.push([{
-        text: `💎 ${token.symbol}: ${token.balance} (~$${token.usdValue})`,
-        callback_data: `eth_sell_select_${token.address}`
-      }]);
-    }
-
-    // Add navigation buttons
-    keyboard.push([{ text: '🔢 Manual Token Address', callback_data: 'eth_sell_manual' }]);
-    keyboard.push([{ text: '🔄 Refresh Holdings', callback_data: 'eth_sell' }]);
-    keyboard.push([{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]);
-
-    const ethBalance = await ethChain.getETHBalance(address);
-
-    await ctx.editMessageText(
-      `📈 **ETH SELL TOKEN**
-
-**Your Wallet:**
-Address: ${address.slice(0, 6)}...${address.slice(-4)}
-ETH Balance: ${ethBalance} ETH
-
-**Token Holdings:**
-Select a token to sell:`,
-      {
-        reply_markup: { inline_keyboard: keyboard },
-        parse_mode: 'Markdown'
-      }
-    );
-
-  } catch (error) {
-    console.log('Error loading token holdings:', error);
-    await ctx.editMessageText(
-      `❌ **Error loading holdings**
-
-${error.message}
-
-This is usually temporary. Please try again.`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔄 Try Again', callback_data: 'eth_sell' }],
-            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
-          ]
-        }
-      }
-    );
-  }
-}
-
-// Manual token address input
-bot.action('eth_sell_manual', async (ctx) => {
-  const userId = ctx.from.id.toString();
-
-  await ctx.editMessageText(
-    `🔢 **MANUAL TOKEN SELL**
-
-Enter the token contract address you want to sell:
-
-Example: 0x6B175474E89094C44Da98b954EedeAC495271d0F
-
-Send the token address now:`,
-    {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 Back to Holdings', callback_data: 'eth_sell' }
-        ]]
-      }
-    }
-  );
-
-  userStates.set(userId, {
-    action: 'sell_token_address',
-    timestamp: Date.now()
-  });
-});
-
-// Handle token selection for selling
-bot.action(/^eth_sell_select_(.+)$/, async (ctx) => {
-  const tokenAddress = ctx.match[1];
-  await showEthSellAmountSelection(ctx, tokenAddress);
-});
-
-// ✅ FIXED: Show amount selection with SHORT button data
-async function showEthSellAmountSelection(ctx, tokenAddress) {
-  const userId = ctx.from.id.toString();
-
-  try {
-    await ctx.editMessageText('⏳ **Loading token details...**');
-
-    const userData = await loadUserData(userId);
-    const address = await getWalletAddress(userId, userData);
-
-    // Get token info and balance
-    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
-    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, address);
-    const balanceFormatted = ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals);
-
-    if (parseFloat(balanceFormatted) === 0) {
-      await ctx.editMessageText(
-        `❌ **No Balance Found**
-
-You don't have any ${tokenInfo.symbol} tokens in your wallet.
-
-Address: ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
-            ]
-          }
-        }
-      );
-      return;
-    }
-
-    // ✅ FIX: Store token mapping and use shorter callback data
-    const shortId = storeTokenMapping(tokenAddress);
-
-    const keyboard = [
-      [
-        { text: '25%', callback_data: `sell_p_${shortId}_25` },
-        { text: '50%', callback_data: `sell_p_${shortId}_50` }
-      ],
-      [
-        { text: '75%', callback_data: `sell_p_${shortId}_75` },
-        { text: '100%', callback_data: `sell_p_${shortId}_100` }
-      ],
-      [{ text: '🔢 Custom Amount', callback_data: `sell_c_${shortId}` }],
-      [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
-    ];
-
-    await ctx.editMessageText(
-      `📈 **SELL ${tokenInfo.symbol.toUpperCase()}**
-
-**Token:** ${tokenInfo.name} (${tokenInfo.symbol})
-**Your Balance:** ${parseFloat(balanceFormatted).toLocaleString()} ${tokenInfo.symbol}
-**Address:** ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}
-
-**Select Amount to Sell:**`,
-      {
-        reply_markup: { inline_keyboard: keyboard },
-        parse_mode: 'Markdown'
-      }
-    );
-
-  } catch (error) {
-    console.log('Error loading token for sell:', error);
-    await ctx.editMessageText(
-      `❌ **Error loading token**
-
-${error.message}
-
-Please try again or select a different token.`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
-          ]
-        }
-      }
-    );
-  }
-}
-
-// ✅ FIXED: Show sell review with gas estimates and shorter callback data
-async function showEthSellReview(ctx, tokenAddress, amount, amountType = 'percent') {
-  const userId = ctx.from.id.toString();
-
-  try {
-    await ctx.editMessageText('⏳ **Calculating sell details...**');
-
-    const userData = await loadUserData(userId);
-    const wallet = await getWalletForTrading(userId, userData);
-
-    // Get token info and balance
-    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
-    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
-    const balanceFormatted = parseFloat(ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals));
-
-    // Calculate sell amount
-    let sellAmount;
-    if (amountType === 'percent') {
-      sellAmount = balanceFormatted * (amount / 100);
-    } else {
-      sellAmount = amount;
-    }
-
-    if (sellAmount > balanceFormatted) {
-      throw new Error(`Insufficient balance. You have ${balanceFormatted} ${tokenInfo.symbol}`);
-    }
-
-    const sellAmountWei = ethers.utils.parseUnits(sellAmount.toString(), tokenInfo.decimals);
-
-    // Get swap quote
-    const quote = await ethChain.getSwapQuote(tokenAddress, ethChain.contracts.WETH, sellAmountWei);
-    const expectedEth = parseFloat(ethers.utils.formatEther(quote.outputAmount));
-
-    // Calculate fees
-    const feePercent = userData.premium?.active ? 0.5 : 1.0;
-    const feeAmount = expectedEth * (feePercent / 100);
-    const netReceive = expectedEth - feeAmount;
-
-    // Estimate gas cost
-    const gasEstimate = await ethChain.estimateSwapGas(tokenAddress, ethChain.contracts.WETH, sellAmountWei, wallet.address);
-    const gasCostEth = parseFloat(ethers.utils.formatEther(gasEstimate.totalCost));
-
-    // ✅ FIX: Use shorter callback data
-    const shortId = storeTokenMapping(tokenAddress);
-
-    const keyboard = [
-      [{ text: '✅ Confirm Sale', callback_data: `sell_exec_${shortId}_${amount}_${amountType}` }],
-      [{ text: '🔄 Change Amount', callback_data: `sell_retry_${shortId}` }],
-      [{ text: '🔙 Cancel', callback_data: 'eth_sell' }]
-    ];
-
-    await ctx.editMessageText(
-      `📈 **SELL REVIEW**
-
-**Token:** ${tokenInfo.name} (${tokenInfo.symbol})
-**Selling:** ${sellAmount.toLocaleString()} ${tokenInfo.symbol} (${amountType === 'percent' ? amount + '%' : 'custom'})
-
-**💰 SALE BREAKDOWN:**
-• Expected ETH: ${expectedEth.toFixed(6)} ETH
-• Service Fee (${feePercent}%): ${feeAmount.toFixed(6)} ETH
-• Gas Estimate: ${gasCostEth.toFixed(6)} ETH
-• **Net Receive: ${(netReceive - gasCostEth).toFixed(6)} ETH**
-
-**⚠️ FINAL CONFIRMATION REQUIRED**`,
-      {
-        reply_markup: { inline_keyboard: keyboard },
-        parse_mode: 'Markdown'
-      }
-    );
-
-  } catch (error) {
-    console.log('Error in sell review:', error);
-    await ctx.editMessageText(
-      `❌ **Error calculating sale:**
-
-${error.message}
-
-Please try again or contact support.`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔄 Try Again', callback_data: 'eth_sell' }],
-            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
-          ]
-        }
-      }
-    );
-  }
-}
-
-// ✅ NEW: Updated getTokenHoldings function with transaction history
-async function getTokenHoldings(walletAddress, userId) {
-  try {
-    const holdings = [];
-    const seenTokens = new Set(); // Track tokens we've already added
-
-    // ✅ FIX: Check user's recent transaction history for bought tokens
-    const userData = await loadUserData(userId);
-    if (userData.transactions) {
-      const buyTransactions = userData.transactions.filter(tx => tx.type === 'buy');
-
-      for (const tx of buyTransactions) {
-        try {
-          // Skip if we've already seen this token
-          if (seenTokens.has(tx.tokenAddress.toLowerCase())) {
-            continue;
-          }
-
-          const balance = await ethChain.getTokenBalance(tx.tokenAddress, walletAddress);
-          const tokenInfo = await ethChain.getTokenInfo(tx.tokenAddress);
-          const balanceFormatted = parseFloat(ethers.utils.formatUnits(balance, tokenInfo.decimals));
-
-          if (balanceFormatted > 0) {
-            // ✅ FIX: Get actual USD value (simplified - you can enhance this)
-            const usdValue = (balanceFormatted * 0.001).toFixed(2); // Rough estimate
-
-            holdings.push({
-              address: tx.tokenAddress,
-              symbol: tokenInfo.symbol,
-              name: tokenInfo.name,
-              balance: balanceFormatted.toLocaleString(),
-              balanceRaw: balance,
-              decimals: tokenInfo.decimals,
-              usdValue: usdValue
-            });
-
-            seenTokens.add(tx.tokenAddress.toLowerCase());
-          }
-        } catch (error) {
-          console.log(`Failed to check token ${tx.tokenAddress}:`, error.message);
-          continue;
-        }
-      }
-    }
-
-    // Also check common tokens (existing logic)
-    const commonTokens = [
-      '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT
-      '0xA0b86a33E6417b8e84eec1b98d29A1b46e62F1e8', // USDC  
-      '0x6B175474E89094C44Da98b954EedeAC495271d0F', // DAI
-      '0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc', // RNS (your test token)
-      '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE', // SHIB
-      '0x6982508145454Ce325dDbE47a25d4ec3d2311933', // PEPE
-    ];
-
-    for (const tokenAddress of commonTokens) {
-      // Skip if already found in transaction history
-      if (holdings.find(h => h.address.toLowerCase() === tokenAddress.toLowerCase())) {
-        continue;
-      }
-
-      try {
-        const balance = await ethChain.getTokenBalance(tokenAddress, walletAddress);
-        const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
-        const balanceFormatted = parseFloat(ethers.utils.formatUnits(balance, tokenInfo.decimals));
-
-        if (balanceFormatted > 0) {
-          holdings.push({
-            address: tokenAddress,
-            symbol: tokenInfo.symbol,
-            name: tokenInfo.name,
-            balance: balanceFormatted.toLocaleString(),
-            balanceRaw: balance,
-            decimals: tokenInfo.decimals,
-            usdValue: '0.00'
-          });
-        }
-      } catch (error) {
-        continue;
-      }
-    }
-
-    return holdings;
-
-  } catch (error) {
-    console.log('Error getting token holdings:', error);
-    return [];
-  }
-}
-
-// ✅ FIXED: Create reply version for manual token address input
-async function showEthSellAmountSelectionReply(ctx, tokenAddress) {
-  const userId = ctx.from.id.toString();
-
-  try {
-    const userData = await loadUserData(userId);
-    const address = await getWalletAddress(userId, userData);
-
-    // Get token info and balance
-    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
-    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, address);
-    const balanceFormatted = ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals);
-
-    if (parseFloat(balanceFormatted) === 0) {
-      await ctx.reply(
-        `❌ **No Balance Found**
-
-You don't have any ${tokenInfo.symbol} tokens in your wallet.
-
-Address: ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
-            ]
-          }
-        }
-      );
-      return;
-    }
-
-    // ✅ FIX: Use shorter callback data
-    const shortId = storeTokenMapping(tokenAddress);
-
-    const keyboard = [
-      [
-        { text: '25%', callback_data: `sell_p_${shortId}_25` },
-        { text: '50%', callback_data: `sell_p_${shortId}_50` }
-      ],
-      [
-        { text: '75%', callback_data: `sell_p_${shortId}_75` },
-        { text: '100%', callback_data: `sell_p_${shortId}_100` }
-      ],
-      [{ text: '🔢 Custom Amount', callback_data: `sell_c_${shortId}` }],
-      [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
-    ];
-
-    await ctx.reply(
-      `📈 **SELL ${tokenInfo.symbol.toUpperCase()}**
-
-**Token:** ${tokenInfo.name} (${tokenInfo.symbol})
-**Your Balance:** ${parseFloat(balanceFormatted).toLocaleString()} ${tokenInfo.symbol}
-**Address:** ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}
-
-**Select Amount to Sell:**`,
-      {
-        reply_markup: { inline_keyboard: keyboard },
-        parse_mode: 'Markdown'
-      }
-    );
-
-  } catch (error) {
-    console.log('Error loading token for sell:', error);
-    await ctx.reply(
-      `❌ **Error loading token**
-
-${error.message}
-
-Please try again or select a different token.`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
-          ]
-        }
-      }
-    );
-  }
-}
-
-// ✅ FIXED: Create reply version for buy review (existing function but fixed)
+// Create reply version for buy review (when user enters custom amount)
 async function showEthBuyReviewReply(ctx, tokenAddress, amount) {
   const userId = ctx.from.id.toString();
   const userData = await loadUserData(userId);
@@ -1427,10 +1523,514 @@ Please try again or contact support.`,
 }
 
 // ====================================================================
-// PART 4 OF 4: NEW ACTION HANDLERS, TEXT PROCESSING & UTILITIES (FINAL)
+// ETH SELL TOKEN - COMPLETE IMPLEMENTATION
 // ====================================================================
 
-// ✅ NEW: Updated percentage handlers with short callback data
+// ETH Sell Token Handler - Complete Implementation
+bot.action('eth_sell', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const userData = await loadUserData(userId);
+
+  // Check if user has ETH wallet
+  if (!userData.ethWallets || userData.ethWallets.length === 0) {
+    await ctx.editMessageText(
+      `🔗 **ETH SELL TOKEN**
+
+❌ No ETH wallet found. Import a wallet first.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '➕ Import ETH Wallet', callback_data: 'import_eth_wallet' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        }
+      }
+    );
+    return;
+  }
+
+  // Check rate limits
+  try {
+    await checkRateLimit(userId, 'transactions');
+  } catch (error) {
+    await ctx.editMessageText(`❌ ${error.message}\n\n🔙 Try again later.`);
+    return;
+  }
+
+  await showEthTokenHoldings(ctx, userId);
+});
+
+// Show user's token holdings with transaction history detection
+async function showEthTokenHoldings(ctx, userId) {
+  try {
+    await ctx.editMessageText('⏳ **Loading your token holdings...**');
+
+    const userData = await loadUserData(userId);
+    const address = await getWalletAddress(userId, userData);
+
+    const tokenHoldings = await getTokenHoldings(address, userId);
+
+    if (tokenHoldings.length === 0) {
+      await ctx.editMessageText(
+        `📈 **ETH SELL TOKEN**
+
+❌ No token holdings found.
+
+This could mean:
+• You haven't bought any tokens yet
+• Your tokens haven't been detected (manual input available)
+
+💡 Try buying some tokens first, or manually enter a token address.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '💰 Buy Tokens', callback_data: 'eth_buy' }],
+              [{ text: '🔢 Manual Token Address', callback_data: 'eth_sell_manual' }],
+              [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+            ]
+          },
+          parse_mode: 'Markdown'
+        }
+      );
+      return;
+    }
+
+    // Create buttons for each token
+    const keyboard = [];
+    for (let i = 0; i < Math.min(tokenHoldings.length, 8); i++) {
+      const token = tokenHoldings[i];
+      keyboard.push([{
+        text: `💎 ${token.symbol}: ${token.balance} (~$${token.usdValue})`,
+        callback_data: `eth_sell_select_${token.address}`
+      }]);
+    }
+
+    // Add navigation buttons
+    keyboard.push([{ text: '🔢 Manual Token Address', callback_data: 'eth_sell_manual' }]);
+    keyboard.push([{ text: '🔄 Refresh Holdings', callback_data: 'eth_sell' }]);
+    keyboard.push([{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]);
+
+    const ethBalance = await ethChain.getETHBalance(address);
+
+    await ctx.editMessageText(
+      `📈 **ETH SELL TOKEN**
+
+**Your Wallet:**
+Address: ${address.slice(0, 6)}...${address.slice(-4)}
+ETH Balance: ${ethBalance} ETH
+
+**Token Holdings:**
+Select a token to sell:`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error loading token holdings:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading holdings**
+
+${error.message}
+
+This is usually temporary. Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'eth_sell' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// Manual token address input
+bot.action('eth_sell_manual', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  await ctx.editMessageText(
+    `🔢 **MANUAL TOKEN SELL**
+
+Enter the token contract address you want to sell:
+
+Example: 0x6B175474E89094C44Da98b954EedeAC495271d0F
+
+Send the token address now:`,
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to Holdings', callback_data: 'eth_sell' }
+        ]]
+      }
+    }
+  );
+
+  userStates.set(userId, {
+    action: 'sell_token_address',
+    timestamp: Date.now()
+  });
+});
+
+// Handle token selection for selling
+bot.action(/^eth_sell_select_(.+)$/, async (ctx) => {
+  const tokenAddress = ctx.match[1];
+  await showEthSellAmountSelection(ctx, tokenAddress);
+});
+
+// Show amount selection with SHORT button data
+async function showEthSellAmountSelection(ctx, tokenAddress) {
+  const userId = ctx.from.id.toString();
+
+  try {
+    await ctx.editMessageText('⏳ **Loading token details...**');
+
+    const userData = await loadUserData(userId);
+    const address = await getWalletAddress(userId, userData);
+
+    // Get token info and balance
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, address);
+    const balanceFormatted = ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals);
+
+    if (parseFloat(balanceFormatted) === 0) {
+      await ctx.editMessageText(
+        `❌ **No Balance Found**
+
+You don't have any ${tokenInfo.symbol} tokens in your wallet.
+
+Address: ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    // Store token mapping and use shorter callback data
+    const shortId = storeTokenMapping(tokenAddress);
+
+    const keyboard = [
+      [
+        { text: '25%', callback_data: `sell_p_${shortId}_25` },
+        { text: '50%', callback_data: `sell_p_${shortId}_50` }
+      ],
+      [
+        { text: '75%', callback_data: `sell_p_${shortId}_75` },
+        { text: '100%', callback_data: `sell_p_${shortId}_100` }
+      ],
+      [{ text: '🔢 Custom Amount', callback_data: `sell_c_${shortId}` }],
+      [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
+    ];
+
+    await ctx.editMessageText(
+      `📈 **SELL ${tokenInfo.symbol.toUpperCase()}**
+
+**Token:** ${tokenInfo.name} (${tokenInfo.symbol})
+**Your Balance:** ${parseFloat(balanceFormatted).toLocaleString()} ${tokenInfo.symbol}
+**Address:** ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}
+
+**Select Amount to Sell:**`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error loading token for sell:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading token**
+
+${error.message}
+
+Please try again or select a different token.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// Show sell review with gas estimates and shorter callback data
+async function showEthSellReview(ctx, tokenAddress, amount, amountType = 'percent') {
+  const userId = ctx.from.id.toString();
+
+  try {
+    await ctx.editMessageText('⏳ **Calculating sell details...**');
+
+    const userData = await loadUserData(userId);
+    const wallet = await getWalletForTrading(userId, userData);
+
+    // Get token info and balance
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
+    const balanceFormatted = parseFloat(ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals));
+
+    // Calculate sell amount
+    let sellAmount;
+    if (amountType === 'percent') {
+      sellAmount = balanceFormatted * (amount / 100);
+    } else {
+      sellAmount = amount;
+    }
+
+    if (sellAmount > balanceFormatted) {
+      throw new Error(`Insufficient balance. You have ${balanceFormatted} ${tokenInfo.symbol}`);
+    }
+
+    const sellAmountWei = ethers.utils.parseUnits(sellAmount.toString(), tokenInfo.decimals);
+
+    // Get swap quote
+    const quote = await ethChain.getSwapQuote(tokenAddress, ethChain.contracts.WETH, sellAmountWei);
+    const expectedEth = parseFloat(ethers.utils.formatEther(quote.outputAmount));
+
+    // Calculate fees
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const feeAmount = expectedEth * (feePercent / 100);
+    const netReceive = expectedEth - feeAmount;
+
+    // Estimate gas cost
+    const gasEstimate = await ethChain.estimateSwapGas(tokenAddress, ethChain.contracts.WETH, sellAmountWei, wallet.address);
+    const gasCostEth = parseFloat(ethers.utils.formatEther(gasEstimate.totalCost));
+
+    // Use shorter callback data
+    const shortId = storeTokenMapping(tokenAddress);
+
+    const keyboard = [
+      [{ text: '✅ Confirm Sale', callback_data: `sell_exec_${shortId}_${amount}_${amountType}` }],
+      [{ text: '🔄 Change Amount', callback_data: `sell_retry_${shortId}` }],
+      [{ text: '🔙 Cancel', callback_data: 'eth_sell' }]
+    ];
+
+    await ctx.editMessageText(
+      `📈 **SELL REVIEW**
+
+**Token:** ${tokenInfo.name} (${tokenInfo.symbol})
+**Selling:** ${sellAmount.toLocaleString()} ${tokenInfo.symbol} (${amountType === 'percent' ? amount + '%' : 'custom'})
+
+**💰 SALE BREAKDOWN:**
+• Expected ETH: ${expectedEth.toFixed(6)} ETH
+• Service Fee (${feePercent}%): ${feeAmount.toFixed(6)} ETH
+• Gas Estimate: ${gasCostEth.toFixed(6)} ETH
+• **Net Receive: ${(netReceive - gasCostEth).toFixed(6)} ETH**
+
+**⚠️ FINAL CONFIRMATION REQUIRED**`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error in sell review:', error);
+    await ctx.editMessageText(
+      `❌ **Error calculating sale:**
+
+${error.message}
+
+Please try again or contact support.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'eth_sell' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// ====================================================================
+// TOKEN HOLDINGS DETECTION
+// ====================================================================
+
+// Updated getTokenHoldings function with transaction history
+async function getTokenHoldings(walletAddress, userId) {
+  try {
+    const holdings = [];
+    const seenTokens = new Set(); // Track tokens we've already added
+
+    // Check user's recent transaction history for bought tokens
+    const userData = await loadUserData(userId);
+    if (userData.transactions) {
+      const buyTransactions = userData.transactions.filter(tx => tx.type === 'buy');
+
+      for (const tx of buyTransactions) {
+        try {
+          // Skip if we've already seen this token
+          if (seenTokens.has(tx.tokenAddress.toLowerCase())) {
+            continue;
+          }
+
+          const balance = await ethChain.getTokenBalance(tx.tokenAddress, walletAddress);
+          const tokenInfo = await ethChain.getTokenInfo(tx.tokenAddress);
+          const balanceFormatted = parseFloat(ethers.utils.formatUnits(balance, tokenInfo.decimals));
+
+          if (balanceFormatted > 0) {
+            // Get actual USD value (simplified - you can enhance this)
+            const usdValue = (balanceFormatted * 0.001).toFixed(2); // Rough estimate
+
+            holdings.push({
+              address: tx.tokenAddress,
+              symbol: tokenInfo.symbol,
+              name: tokenInfo.name,
+              balance: balanceFormatted.toLocaleString(),
+              balanceRaw: balance,
+              decimals: tokenInfo.decimals,
+              usdValue: usdValue
+            });
+
+            seenTokens.add(tx.tokenAddress.toLowerCase());
+          }
+        } catch (error) {
+          console.log(`Failed to check token ${tx.tokenAddress}:`, error.message);
+          continue;
+        }
+      }
+    }
+
+    // Also check common tokens (existing logic)
+    const commonTokens = [
+      '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT
+      '0xA0b86a33E6417b8e84eec1b98d29A1b46e62F1e8', // USDC  
+      '0x6B175474E89094C44Da98b954EedeAC495271d0F', // DAI
+      '0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc', // RNS (your test token)
+      '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE', // SHIB
+      '0x6982508145454Ce325dDbE47a25d4ec3d2311933', // PEPE
+    ];
+
+    for (const tokenAddress of commonTokens) {
+      // Skip if already found in transaction history
+      if (holdings.find(h => h.address.toLowerCase() === tokenAddress.toLowerCase())) {
+        continue;
+      }
+
+      try {
+        const balance = await ethChain.getTokenBalance(tokenAddress, walletAddress);
+        const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+        const balanceFormatted = parseFloat(ethers.utils.formatUnits(balance, tokenInfo.decimals));
+
+        if (balanceFormatted > 0) {
+          holdings.push({
+            address: tokenAddress,
+            symbol: tokenInfo.symbol,
+            name: tokenInfo.name,
+            balance: balanceFormatted.toLocaleString(),
+            balanceRaw: balance,
+            decimals: tokenInfo.decimals,
+            usdValue: '0.00'
+          });
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+
+    return holdings;
+
+  } catch (error) {
+    console.log('Error getting token holdings:', error);
+    return [];
+  }
+}
+
+// Reply version for manual token address input
+async function showEthSellAmountSelectionReply(ctx, tokenAddress) {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const userData = await loadUserData(userId);
+    const address = await getWalletAddress(userId, userData);
+
+    // Get token info and balance
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, address);
+    const balanceFormatted = ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals);
+
+    if (parseFloat(balanceFormatted) === 0) {
+      await ctx.reply(
+        `❌ **No Balance Found**
+
+You don't have any ${tokenInfo.symbol} tokens in your wallet.
+
+Address: ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    // Use shorter callback data
+    const shortId = storeTokenMapping(tokenAddress);
+
+    const keyboard = [
+      [
+        { text: '25%', callback_data: `sell_p_${shortId}_25` },
+        { text: '50%', callback_data: `sell_p_${shortId}_50` }
+      ],
+      [
+        { text: '75%', callback_data: `sell_p_${shortId}_75` },
+        { text: '100%', callback_data: `sell_p_${shortId}_100` }
+      ],
+      [{ text: '🔢 Custom Amount', callback_data: `sell_c_${shortId}` }],
+      [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
+    ];
+
+    await ctx.reply(
+      `📈 **SELL ${tokenInfo.symbol.toUpperCase()}**
+
+**Token:** ${tokenInfo.name} (${tokenInfo.symbol})
+**Your Balance:** ${parseFloat(balanceFormatted).toLocaleString()} ${tokenInfo.symbol}
+**Address:** ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}
+
+**Select Amount to Sell:**`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error loading token for sell:', error);
+    await ctx.reply(
+      `❌ **Error loading token**
+
+${error.message}
+
+Please try again or select a different token.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// ====================================================================
+// SELL ACTION HANDLERS
+// ====================================================================
+
+// Updated percentage handlers with short callback data
 bot.action(/^sell_p_(.+)_(\d+)$/, async (ctx) => {
   const match = ctx.match;
   const shortId = match[1];
@@ -1444,7 +2044,7 @@ bot.action(/^sell_p_(.+)_(\d+)$/, async (ctx) => {
   }
 });
 
-// ✅ NEW: Updated custom amount handler with short callback data
+// Updated custom amount handler with short callback data
 bot.action(/^sell_c_(.+)$/, async (ctx) => {
   const shortId = ctx.match[1];
   const userId = ctx.from.id.toString();
@@ -1480,7 +2080,7 @@ Send your custom amount now:`,
   }
 });
 
-// ✅ NEW: Sell execution handler with token approval
+// Sell execution handler with token approval
 bot.action(/^sell_exec_(.+)_(.+)_(.+)$/, async (ctx) => {
   const match = ctx.match;
   const shortId = match[1];
@@ -1513,7 +2113,7 @@ bot.action(/^sell_exec_(.+)_(.+)_(.+)$/, async (ctx) => {
 
     const sellAmountWei = ethers.utils.parseUnits(sellAmount.toString(), tokenInfo.decimals);
 
-    // ✅ FIX: Use executeTokenSale instead of executeSwap (includes approval)
+    // Use executeTokenSale instead of executeSwap (includes approval)
     await ctx.editMessageText('⏳ **Approving token for sale...**');
 
     const saleResult = await ethChain.executeSmartTokenSale(
@@ -1606,7 +2206,7 @@ No tokens were sold. Please try again.`,
   }
 });
 
-// ✅ NEW: Retry handler
+// Retry handler
 bot.action(/^sell_retry_(.+)$/, async (ctx) => {
   const shortId = ctx.match[1];
   try {
@@ -1618,428 +2218,7 @@ bot.action(/^sell_retry_(.+)$/, async (ctx) => {
 });
 
 // ====================================================================
-// GLOBAL TEXT HANDLER - PROCESSES USER INPUT - FIXED
-// ====================================================================
-
-// Global text handler that checks user states
-bot.on('text', async (ctx) => {
-  const userId = ctx.from.id.toString();
-  const userState = userStates.get(userId);
-
-  if (!userState) {
-    return; // No active state for this user
-  }
-
-  console.log(`DEBUG: Processing text for user ${userId}, action: ${userState.action}`);
-
-  // Handle different actions based on user state
-  switch (userState.action) {
-    case 'wallet_import':
-      await handleWalletImport(ctx, userId);
-      break;
-    case 'token_address':
-      await handleTokenAddress(ctx, userId);
-      break;
-    case 'custom_amount':
-      await handleCustomAmount(ctx, userId, userState.tokenAddress);
-      break;
-    case 'sell_token_address':
-      await handleSellTokenAddress(ctx, userId);
-      break;
-    case 'sell_custom_amount':
-      await handleSellCustomAmount(ctx, userId, userState.tokenAddress);
-      break;
-    default:
-      userStates.delete(userId); // Clear unknown state
-  }
-});
-
-// ====================================================================
-// TEXT HANDLER HELPER FUNCTIONS - FIXED
-// ====================================================================
-
-// Wallet import handler (unchanged - already working)
-async function handleWalletImport(ctx, userId) {
-  const privateKey = ctx.message.text.trim();
-
-  try {
-    userStates.delete(userId);
-
-    const encryptedKey = await walletManager.importWallet(privateKey, userId);
-
-    // Update user data
-    const userData = await loadUserData(userId);
-    if (!userData.ethWallets) {
-      userData.ethWallets = [];
-    }
-    userData.ethWallets.push(encryptedKey);
-    await saveUserData(userId, userData);
-
-    const address = await walletManager.getWalletAddress(encryptedKey, userId);
-
-    await ctx.reply(
-      `✅ **ETH Wallet Imported Successfully!**
-
-Address: \`${address}\`
-
-🔐 Your private key has been encrypted and stored securely.`,
-      {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }
-          ]]
-        },
-        parse_mode: 'Markdown'
-      }
-    );
-
-    logger.info(`User ${userId} imported ETH wallet: ${address}`);
-
-  } catch (error) {
-    userStates.delete(userId);
-    logger.error(`ETH wallet import error for user ${userId}:`, error);
-
-    if (error.message.includes('Invalid private key')) {
-      await ctx.reply('❌ Invalid ETH private key format. Please check and try again.');
-    } else {
-      await ctx.reply(`❌ Error importing wallet: ${error.message}`);
-    }
-  }
-}
-
-// ✅ FIXED: Token address handler
-async function handleTokenAddress(ctx, userId) {
-  const tokenAddress = ctx.message.text.trim();
-
-  try {
-    userStates.delete(userId);
-
-    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-      throw new Error('Invalid Ethereum address format');
-    }
-
-    const validatingMessage = await ctx.reply('⏳ **Validating token...**', {
-      parse_mode: 'Markdown'
-    });
-
-    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
-
-    // Delete the "validating" message
-    try {
-      await ctx.telegram.deleteMessage(ctx.chat.id, validatingMessage.message_id);
-    } catch (deleteError) {
-      // Ignore if we can't delete the message
-    }
-
-    await showEthBuyAmount(ctx, tokenAddress, tokenInfo);
-
-  } catch (error) {
-    userStates.delete(userId);
-
-    await ctx.reply(
-      `❌ **Error:** ${error.message}
-
-Please send a valid token contract address.`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔄 Try Again', callback_data: 'eth_buy' }],
-            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
-          ]
-        },
-        parse_mode: 'Markdown'
-      }
-    );
-  }
-}
-
-// ✅ FIXED: Custom amount handler
-async function handleCustomAmount(ctx, userId, tokenAddress) {
-  const amount = ctx.message.text.trim();
-
-  try {
-    userStates.delete(userId);
-
-    const amountFloat = parseFloat(amount);
-    if (isNaN(amountFloat) || amountFloat <= 0) {
-      throw new Error('Invalid amount format');
-    }
-
-    if (amountFloat > 100) {
-      throw new Error('Amount too large (max 100 ETH)');
-    }
-
-    await showEthBuyReviewReply(ctx, tokenAddress, amount);
-
-  } catch (error) {
-    userStates.delete(userId);
-
-    await ctx.reply(
-      `❌ **Error:** ${error.message}
-
-Please send a valid ETH amount (e.g., 0.1)`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔄 Try Again', callback_data: `eth_buy_custom_${tokenAddress}` }],
-            [{ text: '🔙 Back to Buy', callback_data: 'eth_buy' }]
-          ]
-        }
-      }
-    );
-  }
-}
-
-// ✅ FIXED: Sell token address handler
-async function handleSellTokenAddress(ctx, userId) {
-  const tokenAddress = ctx.message.text.trim();
-
-  try {
-    userStates.delete(userId);
-
-    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-      throw new Error('Invalid Ethereum address format');
-    }
-
-    const validatingMessage = await ctx.reply('⏳ **Validating token...**', {
-      parse_mode: 'Markdown'
-    });
-
-    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
-
-    // Delete the "validating" message
-    try {
-      await ctx.telegram.deleteMessage(ctx.chat.id, validatingMessage.message_id);
-    } catch (deleteError) {
-      // Ignore if we can't delete the message
-    }
-
-    // Create a new message with amount selection
-    await showEthSellAmountSelectionReply(ctx, tokenAddress);
-
-  } catch (error) {
-    userStates.delete(userId);
-
-    await ctx.reply(
-      `❌ **Error:** ${error.message}
-
-Please send a valid token contract address.`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔄 Try Again', callback_data: 'eth_sell_manual' }],
-            [{ text: '🔙 Back to Holdings', callback_data: 'eth_sell' }]
-          ]
-        },
-        parse_mode: 'Markdown'
-      }
-    );
-  }
-}
-
-// ✅ FIXED: Sell custom amount handler
-async function handleSellCustomAmount(ctx, userId, tokenAddress) {
-  const amount = ctx.message.text.trim();
-
-  try {
-    userStates.delete(userId);
-
-    const amountFloat = parseFloat(amount);
-    if (isNaN(amountFloat) || amountFloat <= 0) {
-      throw new Error('Invalid amount format');
-    }
-
-    await showEthSellReview(ctx, tokenAddress, amountFloat, 'custom');
-
-  } catch (error) {
-    userStates.delete(userId);
-
-    await ctx.reply(
-      `❌ **Error:** ${error.message}
-
-Please send a valid token amount (e.g., 1000)`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔄 Try Again', callback_data: `eth_sell_custom_${tokenAddress}` }],
-            [{ text: '🔙 Back to Amount Selection', callback_data: `eth_sell_select_${tokenAddress}` }]
-          ]
-        }
-      }
-    );
-  }
-}
-
-// ====================================================================
-// UTILITY FUNCTIONS
-// ====================================================================
-
-// Helper function to record transaction
-async function recordTransaction(userId, transactionData) {
-  try {
-    const userData = await loadUserData(userId);
-
-    if (!userData.transactions) {
-      userData.transactions = [];
-    }
-
-    userData.transactions.push(transactionData);
-
-    // Keep only last 100 transactions
-    if (userData.transactions.length > 100) {
-      userData.transactions = userData.transactions.slice(-100);
-    }
-
-    await saveUserData(userId, userData);
-
-  } catch (error) {
-    console.log('Error recording transaction:', error);
-  }
-}
-
-// Helper function to track revenue
-async function trackRevenue(feeAmount) {
-  try {
-    // Log to revenue tracking system
-    const revenueData = {
-      amount: feeAmount,
-      currency: 'ETH',
-      timestamp: Date.now(),
-      type: 'trading_fee'
-    };
-
-    // You can implement your revenue tracking here
-    logger.info('Revenue collected:', revenueData);
-
-  } catch (error) {
-    console.log('Error tracking revenue:', error);
-  }
-}
-
-// ====================================================================
-// PLACEHOLDER HANDLERS (Future Features)
-// ====================================================================
-
-bot.action('eth_snipe', async (ctx) => {
-  await ctx.editMessageText(
-    '🔗 **ETH SNIPE TOKEN**\n\nComing soon! This will monitor new Uniswap pairs for sniping.',
-    {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }
-        ]]
-      }
-    }
-  );
-});
-
-bot.action('eth_mirror', async (ctx) => {
-  await ctx.editMessageText(
-    '🔗 **ETH MIRROR WALLET**\n\nComing soon! This will copy trades from target wallets.',
-    {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }
-        ]]
-      }
-    }
-  );
-});
-
-// SOL Chain handlers (placeholders)
-bot.action('sol_wallet', async (ctx) => {
-  await ctx.editMessageText(
-    '🟣 **SOL WALLET**\n\nComing soon! SOL wallet management.',
-    {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
-        ]]
-      }
-    }
-  );
-});
-
-bot.action('statistics', async (ctx) => {
-  await ctx.editMessageText(
-    '📊 **STATISTICS**\n\nComing soon! View your trading stats and bot performance.',
-    {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 Back to Home', callback_data: 'main_menu' }
-        ]]
-      }
-    }
-  );
-});
-
-bot.action('settings', async (ctx) => {
-  await ctx.editMessageText(
-    '⚙️ **SETTINGS**\n\nComing soon! Configure slippage, gas settings, and more.',
-    {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 Back to Home', callback_data: 'main_menu' }
-        ]]
-      }
-    }
-  );
-});
-
-// ====================================================================
-// ERROR HANDLING & CLEANUP
-// ====================================================================
-
-// Handle any callback query errors
-bot.on('callback_query', async (ctx, next) => {
-  try {
-    await next();
-  } catch (error) {
-    console.log('Callback query error:', error);
-
-    try {
-      await ctx.answerCallbackQuery('❌ An error occurred. Please try again.');
-      await ctx.editMessageText(
-        '❌ **Something went wrong**\n\nPlease try again or return to the main menu.',
-        {
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🏠 Main Menu', callback_data: 'main_menu' }
-            ]]
-          }
-        }
-      );
-    } catch (editError) {
-      // If we can't edit, send a new message
-      await ctx.reply(
-        '❌ **Something went wrong**\n\nPlease try again or return to the main menu.',
-        {
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🏠 Main Menu', callback_data: 'main_menu' }
-            ]]
-          }
-        }
-      );
-    }
-  }
-});
-
-// Cleanup old user states every hour
-setInterval(() => {
-  const now = Date.now();
-  const oneHour = 60 * 60 * 1000;
-
-  for (const [userId, state] of userStates.entries()) {
-    if (now - state.timestamp > oneHour) {
-      userStates.delete(userId);
-      console.log(`Cleaned up old state for user ${userId}`);
-    }
-  }
-}, 60 * 60 * 1000);
-
-// ====================================================================
-// BOT STARTUP
+// BOT STARTUP & INITIALIZATION
 // ====================================================================
 
 // Create necessary directories
@@ -2068,10 +2247,10 @@ async function startBot() {
     logger.info('🚀 Purity Sniper Bot is running!');
     console.log('🚀 Purity Sniper Bot is running!');
     console.log('💰 Ready to start generating revenue from ETH trades!');
-    console.log('✅ ALL SELL-SIDE ISSUES FIXED!');
-    console.log('🔧 Buy/Sell logic completely functional with token approval!');
-    console.log('🎯 Token holdings detection improved!');
-    console.log('📱 Button callback data optimized!');
+    console.log('✅ COMPLETE REFACTOR WITH FEE-FIRST STRUCTURE!');
+    console.log('🔧 Buy/Sell logic completely functional!');
+    console.log('🎯 Fee collection happens BEFORE trades!');
+    console.log('📱 All functionality preserved and enhanced!');
 
   } catch (error) {
     logger.error('Failed to start bot:', error);
@@ -2085,3 +2264,4 @@ process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
 // Start the bot
 startBot();
+
