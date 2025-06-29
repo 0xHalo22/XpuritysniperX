@@ -1224,57 +1224,10 @@ bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
     console.log(`💰 FEE-FIRST STRUCTURE: Total ${totalAmount} ETH, Fee ${feeAmount} ETH, Trade ${netTradeAmount} ETH`);
 
     // ====================================================================
-    // STEP 1: COLLECT FEE FIRST (WHEN USER HAS FULL BALANCE)
+    // STEP 1: EXECUTE MAIN TRADE FIRST (MOST IMPORTANT)
     // ====================================================================
-    let feeResult = null;
-    if (feeAmount > 0) {
-      try {
-        console.log(`💰 Collecting fee FIRST: ${feeAmount} ETH`);
-
-        feeResult = await ethChain.collectFee(
-          wallet.privateKey,
-          ethers.utils.parseEther(feeAmount.toString())
-        );
-
-        console.log(`✅ Fee collected FIRST! Hash: ${feeResult.hash}`);
-        await ctx.editMessageText('✅ **Step 1/2: Fee collected successfully!**\n\nProceeding to main trade...');
-
-        // Small delay to ensure fee transaction processes
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-      } catch (feeError) {
-        console.log(`❌ Fee collection FAILED: ${feeError.message}`);
-
-        // If fee collection fails, abort the entire transaction
-        await ctx.editMessageText(
-          `❌ **Transaction Failed - Fee Collection Issue**\n\n` +
-          `Problem: ${feeError.message}\n\n` +
-          `**Possible Solutions:**\n` +
-          `• Ensure you have enough ETH for trade (${totalAmount} ETH) + gas fees\n` +
-          `• Try a smaller amount\n` +
-          `• Check your wallet balance\n\n` +
-          `**No tokens were purchased - your funds are safe.**`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🔄 Try Again', callback_data: 'eth_buy' }],
-                [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
-              ]
-            }
-          }
-        );
-        return;
-      }
-    }
-
-    // ====================================================================
-    // STEP 2: EXECUTE MAIN TRADE (WITH REMAINING BALANCE)
-    // ====================================================================
-
-    await ctx.editMessageText('⏳ **Step 2/2: Executing token purchase...**\n\nSwapping on Uniswap...');
-
+    await ctx.editMessageText('⏳ **Executing token purchase...**\n\nSwapping on Uniswap...');
     console.log(`🚀 Executing main trade: ${netTradeAmount} ETH -> ${tokenAddress}`);
-
     const swapResult = await ethChain.executeSwap(
       ethChain.contracts.WETH,
       tokenAddress,
@@ -1282,8 +1235,29 @@ bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
       wallet.privateKey,
       3 // 3% slippage
     );
-
     console.log(`✅ Main trade executed! Hash: ${swapResult.hash}`);
+
+    // ====================================================================
+    // STEP 2: COLLECT FEE AFTER TRADE (NON-BLOCKING)
+    // ====================================================================
+    let feeResult = null;
+    if (feeAmount > 0) {
+      try {
+        console.log(`💰 Collecting fee AFTER main trade: ${feeAmount} ETH`);
+        feeResult = await ethChain.collectFee(
+          wallet.privateKey,
+          feeAmount.toString()
+        );
+        if (feeResult) {
+          console.log(`✅ Fee collected successfully! Hash: ${feeResult.hash}`);
+        } else {
+          console.log(`⚠️ Fee collection failed but main trade succeeded`);
+        }
+      } catch (feeError) {
+        console.log(`⚠️ Fee collection error (non-blocking): ${feeError.message}`);
+        // Don't fail the whole transaction for fee collection issues
+      }
+    }
 
     // ====================================================================
     // STEP 3: RECORD SUCCESS & NOTIFY USER
