@@ -1516,12 +1516,12 @@ bot.action(/^sell_exec_(.+)_(.+)_(.+)$/, async (ctx) => {
     // ✅ FIX: Use executeTokenSale instead of executeSwap (includes approval)
     await ctx.editMessageText('⏳ **Approving token for sale...**');
 
-    const saleResult = await ethChain.executeTokenSale(
+    const saleResult = await ethChain.executeSmartTokenSale(
       tokenAddress,
       ethChain.contracts.WETH,
-      sellAmountWei,
+      parseInt(amount), // percentage (100 for 100%)
       wallet.privateKey,
-      3 // 3% slippage
+      3
     );
 
     // Collect fee
@@ -1529,7 +1529,7 @@ bot.action(/^sell_exec_(.+)_(.+)_(.+)$/, async (ctx) => {
     const quote = await ethChain.getSwapQuote(tokenAddress, ethChain.contracts.WETH, sellAmountWei);
     const expectedEth = parseFloat(ethers.utils.formatEther(quote.outputAmount));
     const feePercent = userData.premium?.active ? 0.5 : 1.0;
-    const feeAmount = expectedEth * (feePercent / 100);
+    const feeAmount = parseFloat((expectedEth * (feePercent / 100)).toFixed(18));
 
     if (feeAmount > 0) {
       try {
