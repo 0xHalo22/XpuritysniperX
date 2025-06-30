@@ -55,7 +55,7 @@ const defaultSnipeConfig = {
   active: false,
   amount: 0.1,           // ETH amount to snipe with
   slippage: 10,          // Higher slippage for speed (10%)
-  strategy: 'new_pairs', // 'new_pairs', 'first_liquidity', 'both'
+  strategy: 'first_liquidity', // 'new_pairs', 'first_liquidity', 'both'
   maxGasPrice: 100,      // Max gwei for snipe attempts
   minLiquidity: 1000,    // Min USD liquidity to snipe
   maxPerHour: 5,         // Max snipes per hour
@@ -895,7 +895,7 @@ bot.action(/^snipe_set_strategy_(.+)$/, async (ctx) => {
           successMessage = `✅ Strategy set to ${strategy.replace('_', ' ')}`;
       }
 
-      await ctx.answerCallbackQuery(successMessage);
+      await ctx.answerCbQuery(successMessage);
 
       const userData = await loadUserData(userId);
       await showSnipeConfiguration(ctx, userData);
