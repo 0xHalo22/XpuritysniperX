@@ -839,12 +839,12 @@ bot.action(/^snipe_set_amount_(.+)$/, async (ctx) => {
 
   try {
     await updateSnipeConfig(userId, { amount });
-    await ctx.answerCbQuery()(`✅ Snipe amount set to ${amount} ETH`);
+    await ctx.answerCbQuery(`✅ Snipe amount set to ${amount} ETH`);
 
     const userData = await loadUserData(userId);
     await showSnipeConfiguration(ctx, userData);
   } catch (error) {
-    await ctx.answerCbQuery()('❌ Failed to update amount');
+    await ctx.answerCbQuery('❌ Failed to update amount');
   }
 });
 
@@ -854,12 +854,12 @@ bot.action(/^snipe_set_slippage_(.+)$/, async (ctx) => {
 
   try {
     await updateSnipeConfig(userId, { slippage });
-    await ctx.answerCbQuery()(`✅ Slippage set to ${slippage}%`);
+    await ctx.answerCbQuery(`✅ Slippage set to ${slippage}%`);
 
     const userData = await loadUserData(userId);
     await showSnipeConfiguration(ctx, userData);
   } catch (error) {
-    await ctx.answerCbQuery()('❌ Failed to update slippage');
+    await ctx.answerCbQuery('❌ Failed to update slippage');
   }
 });
 
@@ -900,7 +900,7 @@ bot.action(/^snipe_set_strategy_(.+)$/, async (ctx) => {
       const userData = await loadUserData(userId);
       await showSnipeConfiguration(ctx, userData);
     } catch (error) {
-      await ctx.answerCbQuery()('❌ Failed to update strategy');
+      await ctx.answerCbQuery('❌ Failed to update strategy');
     }
   });
 
@@ -1451,7 +1451,7 @@ bot.on('callback_query', async (ctx, next) => {
     console.log('Callback query error:', error);
 
     try {
-      await ctx.answerCbQuery()('❌ An error occurred. Please try again.');
+      await ctx.answerCbQuery('❌ An error occurred. Please try again.');
       await ctx.editMessageText(
         '❌ **Something went wrong**\n\nPlease try again or return to the main menu.',
         {
