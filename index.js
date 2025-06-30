@@ -858,7 +858,418 @@ Select maximum slippage tolerance for snipe attempts:
     }
   );
 });
+// ====================================================================
+// MISSING SNIPE MENU HANDLERS - ADD THESE TO YOUR index.js
+// ====================================================================
 
+// ADD these handlers right after your existing snipe_config_slippage handler
+
+// 1. STRATEGY CONFIGURATION HANDLER (MISSING)
+bot.action('snipe_config_strategy', async (ctx) => {
+  const keyboard = [
+    [{ text: '🆕 New Pairs (Degen Mode)', callback_data: 'snipe_set_strategy_new_pairs' }],
+    [{ text: '💧 First Liquidity Events', callback_data: 'snipe_set_strategy_first_liquidity' }],
+    [{ text: '🔧 Contract Methods', callback_data: 'snipe_set_strategy_contract_methods' }],
+    [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+  ];
+
+  await ctx.editMessageText(
+    `🎯 **SNIPE STRATEGY CONFIGURATION**
+
+Choose your sniping strategy:
+
+**🆕 New Pairs (Degen Mode):**
+• Monitors ALL new Uniswap pairs
+• Automatic sniping when any new pair is created
+• High volume, high risk/reward
+• Recommended for experienced users
+
+**💧 First Liquidity Events:**
+• Monitor specific tokens you add
+• Snipe when target tokens get liquidity
+• Surgical precision approach
+• Perfect for researched opportunities
+
+**🔧 Contract Methods:**
+• Monitor specific contract method calls
+• Advanced strategy for technical users
+• Snipe based on contract interactions
+• Requires knowledge of method signatures
+
+Select your preferred strategy:`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// 2. NEW PAIRS STRATEGY HANDLER (MISSING)
+bot.action('snipe_set_strategy_new_pairs', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    await updateSnipeConfig(userId, { strategy: 'new_pairs' });
+
+    await ctx.editMessageText(
+      `🆕 **NEW PAIRS (DEGEN MODE)**
+
+**Strategy Selected:** Monitor ALL new Uniswap pairs
+
+**⚠️ DEGEN MODE WARNING:**
+This strategy will attempt to snipe EVERY new pair created on Uniswap. This is extremely high-risk and can result in:
+• Rapid ETH consumption
+• Many failed transactions
+• Potential rug pulls and scam tokens
+• High gas costs
+
+**How it works:**
+• Bot monitors Uniswap factory for new pair events
+• Automatically snipes when any ETH/Token pair is created
+• Uses your configured amount and slippage
+• No filtering - pure degen mode
+
+**💡 Recommended settings:**
+• Amount: 0.01-0.05 ETH (start small)
+• Slippage: 15-30% (high for speed)
+• Max Gas: 200+ gwei (fast execution)
+
+**Only use this if you understand the risks!**`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '✅ I Understand - Use This Strategy', callback_data: 'confirm_degen_mode' }],
+            [{ text: '🔙 Choose Different Strategy', callback_data: 'snipe_config_strategy' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error setting new pairs strategy:', error);
+    await ctx.answerCbQuery('❌ Failed to set strategy');
+  }
+});
+
+// 3. CONFIRM DEGEN MODE HANDLER
+bot.action('confirm_degen_mode', async (ctx) => {
+  await ctx.editMessageText(
+    `🔥 **DEGEN MODE ACTIVATED!**
+
+✅ Strategy set to "New Pairs (Degen Mode)"
+
+Your bot will now snipe ALL new Uniswap pairs when you start sniping.
+
+**Next steps:**
+1. Configure your amount (start small!)
+2. Set appropriate slippage (15-30%)
+3. Ensure you have sufficient ETH
+4. Start sniping when ready
+
+**⚠️ Remember:** This is extremely high-risk. Start with small amounts!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💰 Configure Amount', callback_data: 'snipe_config_amount' }],
+          [{ text: '⚡ Configure Slippage', callback_data: 'snipe_config_slippage' }],
+          [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+
+  await ctx.answerCbQuery('🔥 Degen Mode activated!');
+});
+
+// 4. MAX GAS CONFIGURATION HANDLER (MISSING)
+bot.action('snipe_config_gas', async (ctx) => {
+  const keyboard = [
+    [
+      { text: '50 gwei', callback_data: 'snipe_set_gas_50' },
+      { text: '100 gwei', callback_data: 'snipe_set_gas_100' }
+    ],
+    [
+      { text: '200 gwei', callback_data: 'snipe_set_gas_200' },
+      { text: '300 gwei', callback_data: 'snipe_set_gas_300' }
+    ],
+    [
+      { text: '500 gwei', callback_data: 'snipe_set_gas_500' },
+      { text: '1000 gwei', callback_data: 'snipe_set_gas_1000' }
+    ],
+    [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+  ];
+
+  await ctx.editMessageText(
+    `⛽ **MAX GAS PRICE CONFIGURATION**
+
+Set the maximum gas price for snipe attempts:
+
+**💡 Gas Price Guide:**
+• **50-100 gwei:** Normal network conditions
+• **200-300 gwei:** High priority (recommended for sniping)
+• **500+ gwei:** Emergency/ultra-fast execution
+• **1000+ gwei:** Extreme priority (very expensive)
+
+**⚠️ Important:**
+• Higher gas = faster execution but more expensive
+• Snipes that exceed max gas will be skipped
+• During high network activity, you may need higher gas
+• Gas price affects snipe success rate
+
+**Current network conditions will be checked before each snipe**
+
+Select your maximum gas price:`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// 5. SNIPE HISTORY HANDLER (MISSING)
+bot.action('snipe_history', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const userData = await loadUserData(userId);
+    const transactions = userData.transactions || [];
+
+    // Filter snipe transactions
+    const snipeTransactions = transactions.filter(tx => tx.type === 'snipe').slice(-10);
+
+    if (snipeTransactions.length === 0) {
+      await ctx.editMessageText(
+        `📊 **SNIPE HISTORY**
+
+❌ No snipe attempts found yet.
+
+Once you start sniping, your transaction history will appear here.
+
+**What you'll see:**
+• Successful snipes with token info
+• Failed attempts and reasons
+• Gas costs and fees paid
+• Timestamps and transaction hashes
+
+Start sniping to build your history!`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔥 Start Sniping', callback_data: 'snipe_start' }],
+              [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+            ]
+          },
+          parse_mode: 'Markdown'
+        }
+      );
+      return;
+    }
+
+    // Build history text
+    let historyText = `📊 **SNIPE HISTORY**\n\n**Last ${snipeTransactions.length} Snipe Attempts:**\n\n`;
+
+    snipeTransactions.reverse().forEach((tx, index) => {
+      const date = new Date(tx.timestamp).toLocaleDateString();
+      const time = new Date(tx.timestamp).toLocaleTimeString();
+      const status = tx.failed ? '❌ FAILED' : '✅ SUCCESS';
+      const amount = parseFloat(tx.amount || 0).toFixed(4);
+
+      historyText += `**${index + 1}.** ${status}\n`;
+      historyText += `💰 Amount: ${amount} ETH\n`;
+
+      if (tx.tokenAddress) {
+        const tokenAddr = tx.tokenAddress.slice(0, 6) + '...' + tx.tokenAddress.slice(-4);
+        historyText += `🎯 Token: ${tokenAddr}\n`;
+      }
+
+      if (tx.snipeStrategy) {
+        historyText += `📋 Strategy: ${tx.snipeStrategy}\n`;
+      }
+
+      if (tx.txHash) {
+        historyText += `🔗 [View](https://etherscan.io/tx/${tx.txHash})\n`;
+      } else if (tx.error) {
+        historyText += `❌ Error: ${tx.error}\n`;
+      }
+
+      historyText += `📅 ${date} ${time}\n\n`;
+    });
+
+    // Calculate statistics
+    const totalAttempts = snipeTransactions.length;
+    const successful = snipeTransactions.filter(tx => !tx.failed && tx.txHash).length;
+    const successRate = totalAttempts > 0 ? Math.round((successful / totalAttempts) * 100) : 0;
+    const totalSpent = snipeTransactions.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+
+    historyText += `📈 **STATISTICS:**\n`;
+    historyText += `• Total Attempts: ${totalAttempts}\n`;
+    historyText += `• Successful: ${successful}\n`;
+    historyText += `• Success Rate: ${successRate}%\n`;
+    historyText += `• Total Spent: ${totalSpent.toFixed(4)} ETH`;
+
+    await ctx.editMessageText(historyText, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Refresh', callback_data: 'snipe_history' }],
+          [{ text: '🗑️ Clear History', callback_data: 'clear_snipe_history' }],
+          [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    });
+
+  } catch (error) {
+    console.log('Error loading snipe history:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading snipe history**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// 6. CLEAR HISTORY HANDLER
+bot.action('clear_snipe_history', async (ctx) => {
+  await ctx.editMessageText(
+    `🗑️ **CLEAR SNIPE HISTORY**
+
+Are you sure you want to clear all snipe transaction history?
+
+**⚠️ Warning:** This action cannot be undone!
+
+**What will be deleted:**
+• All snipe attempt records
+• Success/failure statistics
+• Transaction hashes and details
+• Timestamps and error messages
+
+Your actual blockchain transactions will remain unchanged.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '✅ Yes, Clear History', callback_data: 'confirm_clear_history' }],
+          [{ text: '❌ Cancel', callback_data: 'snipe_history' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// 7. CONFIRM CLEAR HISTORY
+bot.action('confirm_clear_history', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const userData = await loadUserData(userId);
+
+    // Remove only snipe transactions
+    userData.transactions = (userData.transactions || []).filter(tx => tx.type !== 'snipe');
+
+    await saveUserData(userId, userData);
+
+    await ctx.editMessageText(
+      `✅ **Snipe History Cleared**
+
+All snipe transaction records have been deleted.
+
+Your trading history (buy/sell) remains intact.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📊 View History', callback_data: 'snipe_history' }],
+            [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+          ]
+        }
+      }
+    );
+
+  } catch (error) {
+    console.log('Error clearing snipe history:', error);
+    await ctx.editMessageText(
+      `❌ **Error clearing history**
+
+${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// ====================================================================
+// GAS PRICE SETTING HANDLERS
+// ====================================================================
+
+// Gas price handlers
+bot.action(/^snipe_set_gas_(\d+)$/, async (ctx) => {
+  const gasPrice = parseInt(ctx.match[1]);
+  const userId = ctx.from.id.toString();
+
+  try {
+    await updateSnipeConfig(userId, { maxGasPrice: gasPrice });
+
+    await ctx.editMessageText(
+      `✅ **Max Gas Price Updated**
+
+**New Setting:** ${gasPrice} gwei
+
+${gasPrice <= 100 ? 
+        '💡 **Conservative:** Good for normal network conditions' : 
+        gasPrice <= 300 ? 
+        '⚡ **Aggressive:** Recommended for sniping' : 
+        '🔥 **Ultra-Fast:** Very expensive but highest priority'
+      }
+
+Your snipe attempts will not execute if network gas exceeds ${gasPrice} gwei.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⚙️ Other Settings', callback_data: 'eth_snipe' }],
+            [{ text: '🔙 Back to Gas Config', callback_data: 'snipe_config_gas' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    await ctx.answerCbQuery(`✅ Max gas set to ${gasPrice} gwei`);
+
+  } catch (error) {
+    console.log('Error setting gas price:', error);
+    await ctx.answerCbQuery('❌ Failed to update gas price');
+  }
+});
+
+// ====================================================================
+// INSTRUCTIONS
+// ====================================================================
+
+/*
+ADD ALL THE ABOVE HANDLERS TO YOUR index.js FILE
+
+Place them after your existing snipe_config_slippage handler.
+
+These missing handlers are why your strategy, history, and gas menus 
+weren't working - the buttons existed but no handlers were defined!
+
+After adding these, all your snipe menu buttons should work properly.
+*/
 // ====================================================================
 // CHUNK 2: ENHANCED STRATEGY HANDLERS + CONTRACT METHODS
 // ====================================================================
