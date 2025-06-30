@@ -688,19 +688,19 @@ Please add more ETH to your wallet before starting sniping.`,
     await startSnipeMonitoring(userId);
 
     await ctx.editMessageText(
-      `🔥 **SNIPING ACTIVATED!**
+      `🔥 <b>SNIPING ACTIVATED!</b>
 
-✅ **Monitoring Uniswap for new pairs...**
-⚡ **Ready to snipe when opportunities arise!**
+    ✅ <b>Monitoring Uniswap for new pairs...</b>
+    ⚡ <b>Ready to snipe when opportunities arise!</b>
 
-**Active Settings:**
-• Amount: ${snipeAmount} ETH per snipe
-• Strategy: ${userData.snipeConfig.strategy}
-• Slippage: ${userData.snipeConfig.slippage}%
+    <b>Active Settings:</b>
+    • Amount: ${snipeAmount} ETH per snipe
+    • Strategy: ${userData.snipeConfig.strategy}
+    • Slippage: ${userData.snipeConfig.slippage}%
 
-**🔔 You will be notified of all snipe attempts**
+    <b>🔔 You will be notified of all snipe attempts</b>
 
-**⚠️ Warning:** Sniping is high-risk. Only snipe what you can afford to lose.`,
+    <b>⚠️ Warning:</b> Sniping is high-risk. Only snipe what you can afford to lose.`,
       {
         reply_markup: {
           inline_keyboard: [
@@ -709,7 +709,7 @@ Please add more ETH to your wallet before starting sniping.`,
             [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
           ]
         },
-        parse_mode: 'Markdown'
+        parse_mode: 'HTML'
       }
     );
 
@@ -718,7 +718,7 @@ Please add more ETH to your wallet before starting sniping.`,
   } catch (error) {
     console.log('Error starting sniping:', error);
     await ctx.editMessageText(
-      `❌ **Failed to start sniping**
+      `❌ <b>Failed to start sniping</b>
 
 ${error.message}
 
