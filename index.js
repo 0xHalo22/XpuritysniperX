@@ -51,15 +51,19 @@ function getFullTokenAddress(shortId) {
 // ====================================================================
 
 // Default sniping configuration for new users
+// Default sniping configuration for new users
 const defaultSnipeConfig = {
   active: false,
   amount: 0.1,           // ETH amount to snipe with
   slippage: 10,          // Higher slippage for speed (10%)
-  strategy: 'first_liquidity', // 'new_pairs', 'first_liquidity', 'both'
+  strategy: 'first_liquidity', // 'new_pairs', 'first_liquidity', 'contract_methods'
   maxGasPrice: 100,      // Max gwei for snipe attempts
   minLiquidity: 1000,    // Min USD liquidity to snipe
   maxPerHour: 5,         // Max snipes per hour
-  createdAt: Date.now()
+  createdAt: Date.now(),
+
+  // NEW: Target tokens for pre-launch sniping
+  targetTokens: [] // Array of { address, strategy, method?, label?, status, addedAt }
 };
 
 // Active snipe monitors - tracks WebSocket listeners per user
@@ -140,8 +144,8 @@ function validateSnipeConfig(config) {
     errors.push('Max gas price must be between 20 and 500 gwei');
   }
 
-  if (!['new_pairs', 'first_liquidity', 'both'].includes(config.strategy)) {
-    errors.push('Invalid strategy. Must be new_pairs, first_liquidity, or both');
+  if (!['new_pairs', 'first_liquidity', 'contract_methods'].includes(config.strategy)) {
+    errors.push('Invalid strategy. Must be new_pairs, first_liquidity, or contract_methods');
   }
 
   return errors;
@@ -797,227 +801,621 @@ Select maximum slippage tolerance for snipe attempts:
   );
 });
 
-bot.action('snipe_config_strategy', async (ctx) => {
-  const keyboard = [
-    [{ text: '💧 First Liquidity Events', callback_data: 'snipe_set_strategy_first_liquidity' }],
-    [{ text: '🔧 Contract Methods', callback_data: 'snipe_set_strategy_contract_methods' }],
-    [{ text: '🚨 DEGEN MODE - ALL NEW PAIRS 🚨', callback_data: 'snipe_set_strategy_degen_mode' }],
-    [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
-  ];
-
-  await ctx.editMessageText(
-    `🎯 **STRATEGY CONFIGURATION**
-
-Choose your sniping strategy:
-
-**💧 First Liquidity Events**
-• Snipe when liquidity is first added to existing pairs
-• Safer approach with established tokens
-• Good for tokens that already have pairs created
-
-**🔧 Contract Methods**
-• Use contract-specific snipe methods when available
-• Advanced technique for experienced users
-• May offer faster execution on some tokens
-
-**🚨 DEGEN MODE - ALL NEW PAIRS 🚨**
-• Snipe EVERY new pair created on Uniswap
-• Maximum risk, maximum opportunity
-• Auto-buy any new token paired with WETH
-• ⚠️ HIGH RISK: Only for experienced degens!`,
-    {
-      reply_markup: { inline_keyboard: keyboard },
-      parse_mode: 'Markdown'
-    }
-  );
-});
-
-// Setting update handlers
-bot.action(/^snipe_set_amount_(.+)$/, async (ctx) => {
-  const amount = parseFloat(ctx.match[1]);
-  const userId = ctx.from.id.toString();
-
-  try {
-    await updateSnipeConfig(userId, { amount });
-    await ctx.answerCbQuery(`✅ Snipe amount set to ${amount} ETH`);
-
-    const userData = await loadUserData(userId);
-    await showSnipeConfiguration(ctx, userData);
-  } catch (error) {
-    await ctx.answerCbQuery('❌ Failed to update amount');
-  }
-});
-
-bot.action(/^snipe_set_slippage_(.+)$/, async (ctx) => {
-  const slippage = parseInt(ctx.match[1]);
-  const userId = ctx.from.id.toString();
-
-  try {
-    await updateSnipeConfig(userId, { slippage });
-    await ctx.answerCbQuery(`✅ Slippage set to ${slippage}%`);
-
-    const userData = await loadUserData(userId);
-    await showSnipeConfiguration(ctx, userData);
-  } catch (error) {
-    await ctx.answerCbQuery('❌ Failed to update slippage');
-  }
-});
-
-bot.action(/^snipe_set_strategy_(.+)$/, async (ctx) => {
-    const strategy = ctx.match[1];
-    const userId = ctx.from.id.toString();
-
-  
-
-    // Map the callback data to internal strategy names
-    const strategyMap = {
-      'first_liquidity': 'first_liquidity',
-      'contract_methods': 'contract_methods', 
-      'degen_mode': 'new_pairs' // Maps to your existing new_pairs logic
-    };
-
-    const internalStrategy = strategyMap[strategy] || strategy;
-
-    try {
-      await updateSnipeConfig(userId, { strategy: internalStrategy });
-
-      // Custom success messages for each strategy
-      let successMessage;
-      switch (strategy) {
-        case 'first_liquidity':
-          successMessage = '✅ Strategy set to First Liquidity Events';
-          break;
-        case 'contract_methods':
-          successMessage = '✅ Strategy set to Contract Methods';
-          break;
-        case 'degen_mode':
-          successMessage = '🚨 DEGEN MODE ACTIVATED! 🚨';
-          break;
-        default:
-          successMessage = `✅ Strategy set to ${strategy.replace('_', ' ')}`;
-      }
-
-      await ctx.answerCbQuery(successMessage);
-
-      const userData = await loadUserData(userId);
-      await showSnipeConfiguration(ctx, userData);
-    } catch (error) {
-      await ctx.answerCbQuery('❌ Failed to update strategy');
-    }
-  });
-
-bot.action('snipe_config_gas', async (ctx) => {
-  const keyboard = [
-    [
-      { text: '30 gwei (Slow)', callback_data: 'snipe_set_gas_30' },
-      { text: '50 gwei (Standard)', callback_data: 'snipe_set_gas_50' }
-    ],
-    [
-      { text: '100 gwei (Fast)', callback_data: 'snipe_set_gas_100' },
-      { text: '200 gwei (Aggressive)', callback_data: 'snipe_set_gas_200' }
-    ],
-    [
-      { text: '300 gwei (Turbo)', callback_data: 'snipe_set_gas_300' },
-      { text: '500 gwei (EXTREME)', callback_data: 'snipe_set_gas_500' }
-    ],
-    [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
-  ];
-
-  await ctx.editMessageText(
-    `⛽ **MAX GAS PRICE CONFIGURATION**
-
-Select maximum gas price for snipe transactions:
-
-**💡 Gas Price Guide:**
-• **30-50 gwei:** Slow, may miss fast opportunities
-• **100-200 gwei:** Good balance of speed and cost
-• **300-500 gwei:** Maximum speed, high cost
-
-**⚠️ Higher gas = faster execution but higher fees**
-
-**Current Network Gas:** Check etherscan.io/gastracker`,
-    {
-      reply_markup: { inline_keyboard: keyboard },
-      parse_mode: 'Markdown'
-    }
-  );
-});
-
 // ====================================================================
-// 3. ADD GAS SETTING UPDATE HANDLER
+// CHUNK 2: ENHANCED STRATEGY HANDLERS + CONTRACT METHODS
 // ====================================================================
 
-bot.action(/^snipe_set_gas_(.+)$/, async (ctx) => {
-  const maxGasPrice = parseInt(ctx.match[1]);
+// STEP 1: REPLACE your snipe_set_strategy_first_liquidity handler with this enhanced version
+bot.action('snipe_set_strategy_first_liquidity', async (ctx) => {
   const userId = ctx.from.id.toString();
 
   try {
-    await updateSnipeConfig(userId, { maxGasPrice });
+    // Set strategy first
+    await updateSnipeConfig(userId, { strategy: 'first_liquidity' });
 
-    // Custom messages based on gas level
-    let successMessage;
-    if (maxGasPrice <= 50) {
-      successMessage = `✅ Gas set to ${maxGasPrice} gwei (Conservative)`;
-    } else if (maxGasPrice <= 200) {
-      successMessage = `✅ Gas set to ${maxGasPrice} gwei (Balanced)`;
+    const userData = await loadUserData(userId);
+    const targetTokens = userData.snipeConfig?.targetTokens?.filter(t => t.strategy === 'first_liquidity') || [];
+
+    let tokenList = '';
+    if (targetTokens.length === 0) {
+      tokenList = '📋 **No target tokens added yet**\n\nAdd token contract addresses to start monitoring for liquidity events.';
     } else {
-      successMessage = `🚀 Gas set to ${maxGasPrice} gwei (AGGRESSIVE!)`;
+      tokenList = '📋 **Target Tokens:**\n\n';
+      targetTokens.forEach((token, index) => {
+        const status = token.status === 'waiting' ? '⏳' : token.status === 'sniped' ? '✅' : '❌';
+        const displayName = token.label || `${token.address.slice(0, 8)}...`;
+        tokenList += `${index + 1}. ${status} ${displayName}\n`;
+        tokenList += `   ${token.address.slice(0, 10)}...${token.address.slice(-6)}\n\n`;
+      });
     }
 
-    await ctx.answerCbQuery(successMessage);
+    const keyboard = [
+      [{ text: '➕ Add Token Address', callback_data: 'add_liquidity_token' }],
+      ...(targetTokens.length > 0 ? [[{ text: '🗑️ Remove Token', callback_data: 'remove_liquidity_token' }]] : []),
+      [{ text: '▶️ Start Monitoring', callback_data: 'start_liquidity_snipe' }],
+      [{ text: '🔙 Back to Strategy', callback_data: 'snipe_config_strategy' }]
+    ];
 
-    const userData = await loadUserData(userId);
-    await showSnipeConfiguration(ctx, userData);
-  } catch (error) {
-    await ctx.answerCbQuery('❌ Failed to update gas settings');
-  }
-});
+    await ctx.editMessageText(
+      `💧 **FIRST LIQUIDITY EVENTS**
 
-// Helper function to get strategy display names with proper formatting
-function getStrategyDisplayName(strategy) {
-  switch (strategy) {
-    case 'first_liquidity':
-      return '💧 FIRST LIQUIDITY EVENTS';
-    case 'contract_methods':
-      return '🔧 CONTRACT METHODS';
-    case 'new_pairs':
-      return '🚨 DEGEN MODE 🚨';
-    default:
-      return strategy.replace('_', ' ').toUpperCase();
-  }
-}
+Monitor specific tokens and snipe when liquidity is first added.
 
-// Helper function to get snipe statistics
-async function getSnipeStatistics(userId) {
-  try {
-    const userData = await loadUserData(userId);
-    const today = new Date().toDateString();
+${tokenList}
 
-    const todayTransactions = (userData.transactions || []).filter(tx => 
-      tx.type === 'snipe' && new Date(tx.timestamp).toDateString() === today
+**How it works:**
+• Add token contract addresses to your watch list
+• Bot monitors each token for liquidity addition events  
+• Instant snipe when liquidity is detected
+• Uses your configured amount (${userData.snipeConfig?.amount || 0.1} ETH) and slippage (${userData.snipeConfig?.slippage || 10}%)
+
+**💡 Perfect for:**
+• Pre-launch tokens you've researched
+• Tokens with announced launch times
+• Following specific projects you believe in`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
     );
 
-    const todayAttempts = todayTransactions.length;
-    const todaySuccessful = todayTransactions.filter(tx => tx.txHash && !tx.failed).length;
-    const successRate = todayAttempts > 0 ? Math.round((todaySuccessful / todayAttempts) * 100) : 0;
+    await ctx.answerCbQuery('✅ First Liquidity Events strategy selected');
 
-    return {
-      todayAttempts,
-      todaySuccessful,
-      successRate,
-      totalAttempts: (userData.transactions || []).filter(tx => tx.type === 'snipe').length
-    };
   } catch (error) {
-    return {
-      todayAttempts: 0,
-      todaySuccessful: 0,
-      successRate: 0,
-      totalAttempts: 0
-    };
+    console.log('Error in first liquidity strategy:', error);
+    await ctx.answerCbQuery('❌ Failed to load strategy');
   }
-}
+});
 
-console.log('🎯 CHUNK 2 LOADED: Sniping UI components and menu system ready!');
+// STEP 2: ADD the new contract methods strategy handler
+bot.action('snipe_set_strategy_contract_methods', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    // Set strategy first
+    await updateSnipeConfig(userId, { strategy: 'contract_methods' });
+
+    const userData = await loadUserData(userId);
+    const targetTokens = userData.snipeConfig?.targetTokens?.filter(t => t.strategy === 'contract_methods') || [];
+
+    let tokenList = '';
+    if (targetTokens.length === 0) {
+      tokenList = '📋 **No method targets added yet**\n\nAdd token address + method signature to start monitoring.';
+    } else {
+      tokenList = '📋 **Method Targets:**\n\n';
+      targetTokens.forEach((token, index) => {
+        const status = token.status === 'waiting' ? '⏳' : token.status === 'sniped' ? '✅' : '❌';
+        const displayName = token.label || `${token.address.slice(0, 8)}...`;
+        tokenList += `${index + 1}. ${status} ${displayName}\n`;
+        tokenList += `   Token: ${token.address.slice(0, 10)}...${token.address.slice(-6)}\n`;
+        tokenList += `   Method: ${token.method}\n\n`;
+      });
+    }
+
+    const keyboard = [
+      [{ text: '➕ Add Token + Method', callback_data: 'add_method_token' }],
+      ...(targetTokens.length > 0 ? [[{ text: '🗑️ Remove Target', callback_data: 'remove_method_token' }]] : []),
+      [{ text: '📖 Common Methods', callback_data: 'show_common_methods' }],
+      [{ text: '▶️ Start Monitoring', callback_data: 'start_method_snipe' }],
+      [{ text: '🔙 Back to Strategy', callback_data: 'snipe_config_strategy' }]
+    ];
+
+    await ctx.editMessageText(
+      `🔧 **CONTRACT METHODS**
+
+Monitor specific contract method calls and snipe when detected.
+
+${tokenList}
+
+**How it works:**
+• Add token address + method signature (e.g., 0x095ea7b3)
+• Bot monitors for that method call on the contract
+• Instant snipe when method is executed
+• Uses your configured amount and slippage settings
+
+**💡 Perfect for:**
+• Tokens with known launch methods
+• Following specific contract interactions
+• Advanced sniping techniques`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    await ctx.answerCbQuery('✅ Contract Methods strategy selected');
+
+  } catch (error) {
+    console.log('Error in contract methods strategy:', error);
+    await ctx.answerCbQuery('❌ Failed to load strategy');
+  }
+});
+
+// STEP 3: ADD liquidity token management handlers
+bot.action('add_liquidity_token', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  userStates.set(userId, { action: 'waiting_liquidity_token' });
+
+  await ctx.editMessageText(
+    `💧 **ADD TOKEN FOR LIQUIDITY MONITORING**
+
+Send the token contract address you want to monitor:
+
+**Format Options:**
+\`0x1234567890abcdef1234567890abcdef12345678\`
+\`0x123...abc MEME Token\` (with name)
+
+**Examples:**
+\`0xa0b86a33e6db42311c4f77e8c5c8e8b2e8c8e8c8\`
+\`0xa0b86a33e6db42311c4f77e8c5c8e8b2e8c8e8c8 SafeMoon V2\`
+
+**💡 Tips:**
+• Get contract address from DEXTools, Etherscan, or project announcements
+• Optional token name helps you remember what you're sniping
+• Bot will monitor this token 24/7 until liquidity is added`,
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '❌ Cancel', callback_data: 'snipe_set_strategy_first_liquidity' }
+        ]]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+bot.action('remove_liquidity_token', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const userData = await loadUserData(userId);
+  const targetTokens = userData.snipeConfig?.targetTokens?.filter(t => t.strategy === 'first_liquidity') || [];
+
+  if (targetTokens.length === 0) {
+    await ctx.answerCbQuery('No tokens to remove');
+    return;
+  }
+
+  const keyboard = targetTokens.map((token, index) => [
+    { 
+      text: `🗑️ ${token.label || token.address.slice(0, 10) + '...'}`, 
+      callback_data: `remove_liq_token_${index}` 
+    }
+  ]);
+
+  keyboard.push([{ text: '❌ Cancel', callback_data: 'snipe_set_strategy_first_liquidity' }]);
+
+  await ctx.editMessageText(
+    `🗑️ **REMOVE TOKEN FROM WATCH LIST**
+
+Select which token to remove from monitoring:
+
+**⚠️ Warning:** Removing a token will stop monitoring it for liquidity events.`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+bot.action(/^remove_liq_token_(\d+)$/, async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const tokenIndex = parseInt(ctx.match[1]);
+
+  try {
+    const userData = await loadUserData(userId);
+    const targetTokens = userData.snipeConfig?.targetTokens?.filter(t => t.strategy === 'first_liquidity') || [];
+
+    if (tokenIndex >= 0 && tokenIndex < targetTokens.length) {
+      const removedToken = targetTokens[tokenIndex];
+
+      // Remove from all target tokens (not just filtered ones)
+      userData.snipeConfig.targetTokens = userData.snipeConfig.targetTokens.filter(
+        t => !(t.address === removedToken.address && t.strategy === 'first_liquidity')
+      );
+
+      await saveUserData(userId, userData);
+
+      await ctx.answerCbQuery(`✅ Token ${removedToken.label || 'removed'} from watch list`);
+
+      // Return to strategy view
+      setTimeout(() => {
+        ctx.editMessageText('⏳ Updating token list...');
+        setTimeout(() => {
+          // Simulate clicking back to the strategy
+          bot.handleUpdate({ 
+            callback_query: { 
+              ...ctx.callbackQuery, 
+              data: 'snipe_set_strategy_first_liquidity',
+              from: ctx.from,
+              message: ctx.callbackQuery.message
+            } 
+          });
+        }, 300);
+      }, 100);
+
+    } else {
+      await ctx.answerCbQuery('❌ Invalid token selection');
+    }
+  } catch (error) {
+    console.log('Error removing token:', error);
+    await ctx.answerCbQuery('❌ Failed to remove token');
+  }
+});
+
+// STEP 4: ADD contract methods handlers
+bot.action('add_method_token', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  userStates.set(userId, { action: 'waiting_method_token' });
+
+  await ctx.editMessageText(
+    `🔧 **ADD TOKEN + METHOD FOR MONITORING**
+
+Send the token address and method signature:
+
+**Format:** \`TokenAddress MethodSignature [TokenName]\`
+
+**Examples:**
+\`0x123...abc 0x095ea7b3\`
+\`0x123...abc 0x095ea7b3 MEME Token\`
+\`0xa0b86a33e6db42311c4f77e8c5c8e8b2e8c8e8c8 0xf305d719 SafeMoon Launch\`
+
+**💡 Tips:**
+• Get method signatures from contract source on Etherscan
+• Use 'Common Methods' button for popular signatures
+• Bot will monitor for that specific method call`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📖 Common Methods', callback_data: 'show_common_methods' }],
+          [{ text: '❌ Cancel', callback_data: 'snipe_set_strategy_contract_methods' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+bot.action('show_common_methods', async (ctx) => {
+  await ctx.editMessageText(
+    `📖 **COMMON METHOD SIGNATURES**
+
+**Standard ERC-20:**
+• \`0x095ea7b3\` - approve(spender, amount)
+• \`0xa9059cbb\` - transfer(to, amount)
+• \`0x23b872dd\` - transferFrom(from, to, amount)
+
+**Uniswap Related:**
+• \`0xf305d719\` - addLiquidity
+• \`0xe8e33700\` - addLiquidityETH
+• \`0x38ed1739\` - swapExactTokensForTokens
+
+**Trading/Launch:**
+• \`0x8803dbee\` - swapTokensForExactTokens
+• \`0x7ff36ab5\` - swapExactETHForTokens
+• \`0x18cbafe5\` - swapExactTokensForETH
+
+**💡 How to find methods:**
+1. Go to Etherscan → Contract → Read/Write Contract
+2. Find the method you want to monitor
+3. Copy the method signature (first 10 characters)
+
+**Example:** If you want to snipe when \`addLiquidityETH\` is called, use \`0xe8e33700\``,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '➕ Add Token + Method', callback_data: 'add_method_token' }],
+          [{ text: '🔙 Back to Methods', callback_data: 'snipe_set_strategy_contract_methods' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+bot.action('remove_method_token', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const userData = await loadUserData(userId);
+  const targetTokens = userData.snipeConfig?.targetTokens?.filter(t => t.strategy === 'contract_methods') || [];
+
+  if (targetTokens.length === 0) {
+    await ctx.answerCbQuery('No method targets to remove');
+    return;
+  }
+
+  const keyboard = targetTokens.map((token, index) => [
+    { 
+      text: `🗑️ ${token.label || token.address.slice(0, 8) + '...'} (${token.method})`, 
+      callback_data: `remove_method_token_${index}` 
+    }
+  ]);
+
+  keyboard.push([{ text: '❌ Cancel', callback_data: 'snipe_set_strategy_contract_methods' }]);
+
+  await ctx.editMessageText(
+    `🗑️ **REMOVE METHOD TARGET**
+
+Select which method target to remove:
+
+**⚠️ Warning:** This will stop monitoring that contract method.`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+bot.action(/^remove_method_token_(\d+)$/, async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const tokenIndex = parseInt(ctx.match[1]);
+
+  try {
+    const userData = await loadUserData(userId);
+    const targetTokens = userData.snipeConfig?.targetTokens?.filter(t => t.strategy === 'contract_methods') || [];
+
+    if (tokenIndex >= 0 && tokenIndex < targetTokens.length) {
+      const removedToken = targetTokens[tokenIndex];
+
+      // Remove from all target tokens
+      userData.snipeConfig.targetTokens = userData.snipeConfig.targetTokens.filter(
+        t => !(t.address === removedToken.address && t.strategy === 'contract_methods' && t.method === removedToken.method)
+      );
+
+      await saveUserData(userId, userData);
+
+      await ctx.answerCbQuery(`✅ Method target removed`);
+
+      // Return to strategy view
+      setTimeout(() => {
+        ctx.editMessageText('⏳ Updating method list...');
+        setTimeout(() => {
+          bot.handleUpdate({ 
+            callback_query: { 
+              ...ctx.callbackQuery, 
+              data: 'snipe_set_strategy_contract_methods',
+              from: ctx.from,
+              message: ctx.callbackQuery.message
+            } 
+          });
+        }, 300);
+      }, 100);
+
+    } else {
+      await ctx.answerCbQuery('❌ Invalid target selection');
+    }
+  } catch (error) {
+    console.log('Error removing method target:', error);
+    await ctx.answerCbQuery('❌ Failed to remove target');
+  }
+});
+
+// STEP 5: ADD start monitoring handlers  
+bot.action('start_liquidity_snipe', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const userData = await loadUserData(userId);
+    const targetTokens = userData.snipeConfig?.targetTokens?.filter(
+      t => t.strategy === 'first_liquidity' && t.status === 'waiting'
+    ) || [];
+
+    if (targetTokens.length === 0) {
+      await ctx.editMessageText(
+        `❌ **No Target Tokens Configured**
+
+You need to add at least one token address to your watch list before starting liquidity monitoring.
+
+Add some tokens first, then start monitoring.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '➕ Add Token', callback_data: 'add_liquidity_token' }],
+              [{ text: '🔙 Back to Strategy', callback_data: 'snipe_set_strategy_first_liquidity' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    // Validate wallet and balance
+    const wallet = await getWalletForTrading(userId, userData);
+    const balance = await ethChain.getETHBalance(wallet.address);
+    const balanceFloat = parseFloat(balance);
+    const snipeAmount = userData.snipeConfig?.amount || 0.1;
+    const minRequiredBalance = snipeAmount + 0.02; // Amount + gas buffer
+
+    if (balanceFloat < minRequiredBalance) {
+      await ctx.editMessageText(
+        `❌ **Insufficient Balance for Liquidity Sniping**
+
+**Required:** ${minRequiredBalance.toFixed(4)} ETH
+**Available:** ${balance} ETH
+**Shortage:** ${(minRequiredBalance - balanceFloat).toFixed(4)} ETH
+
+You need more ETH to start monitoring these ${targetTokens.length} target tokens.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '💰 Adjust Amount', callback_data: 'snipe_config_amount' }],
+              [{ text: '🔙 Back to Token List', callback_data: 'snipe_set_strategy_first_liquidity' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    // Set config to active and start monitoring
+    await updateSnipeConfig(userId, { active: true });
+    await startSnipeMonitoring(userId);
+
+    const tokenListText = targetTokens.map((token, index) => 
+      `${index + 1}. ${token.label || token.address.slice(0, 8) + '...'}`
+    ).join('\n');
+
+    await ctx.editMessageText(
+      `🔥 **LIQUIDITY MONITORING ACTIVATED!**
+
+✅ **Monitoring ${targetTokens.length} target tokens for liquidity events...**
+⚡ **Ready to snipe when liquidity is detected!**
+
+**Target Tokens:**
+${tokenListText}
+
+**Active Settings:**
+• Amount: ${snipeAmount} ETH per snipe
+• Slippage: ${userData.snipeConfig.slippage}%
+• Max Gas: ${userData.snipeConfig.maxGasPrice} gwei
+
+**🔔 You will be notified when any target token gets liquidity**
+
+**⚠️ Surgical Precision Mode:** Only your selected tokens will be sniped.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⏸️ Pause Monitoring', callback_data: 'snipe_pause' }],
+            [{ text: '⚙️ Adjust Settings', callback_data: 'eth_snipe' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} started targeted liquidity monitoring for ${targetTokens.length} tokens`);
+
+  } catch (error) {
+    console.log('Error starting liquidity monitoring:', error);
+    await ctx.editMessageText(
+      `❌ **Failed to start liquidity monitoring**
+
+${error.message}
+
+Please check your configuration and try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Token List', callback_data: 'snipe_set_strategy_first_liquidity' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+bot.action('start_method_snipe', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const userData = await loadUserData(userId);
+    const targetTokens = userData.snipeConfig?.targetTokens?.filter(
+      t => t.strategy === 'contract_methods' && t.status === 'waiting'
+    ) || [];
+
+    if (targetTokens.length === 0) {
+      await ctx.editMessageText(
+        `❌ **No Method Targets Configured**
+
+You need to add at least one token + method combination before starting method monitoring.
+
+Add some targets first, then start monitoring.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '➕ Add Token + Method', callback_data: 'add_method_token' }],
+              [{ text: '🔙 Back to Strategy', callback_data: 'snipe_set_strategy_contract_methods' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    // Validate wallet and balance (same as liquidity)
+    const wallet = await getWalletForTrading(userId, userData);
+    const balance = await ethChain.getETHBalance(wallet.address);
+    const balanceFloat = parseFloat(balance);
+    const snipeAmount = userData.snipeConfig?.amount || 0.1;
+    const minRequiredBalance = snipeAmount + 0.02;
+
+    if (balanceFloat < minRequiredBalance) {
+      await ctx.editMessageText(
+        `❌ **Insufficient Balance for Method Sniping**
+
+**Required:** ${minRequiredBalance.toFixed(4)} ETH
+**Available:** ${balance} ETH
+
+You need more ETH to start monitoring these ${targetTokens.length} method targets.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '💰 Adjust Amount', callback_data: 'snipe_config_amount' }],
+              [{ text: '🔙 Back to Method List', callback_data: 'snipe_set_strategy_contract_methods' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    // Set config to active and start monitoring
+    await updateSnipeConfig(userId, { active: true });
+    await startSnipeMonitoring(userId);
+
+    const methodListText = targetTokens.map((token, index) => 
+      `${index + 1}. ${token.label || token.address.slice(0, 8) + '...'} (${token.method})`
+    ).join('\n');
+
+    await ctx.editMessageText(
+      `🔥 **METHOD MONITORING ACTIVATED!**
+
+✅ **Monitoring ${targetTokens.length} method targets...**
+⚡ **Ready to snipe when methods are called!**
+
+**Method Targets:**
+${methodListText}
+
+**Active Settings:**
+• Amount: ${snipeAmount} ETH per snipe
+• Slippage: ${userData.snipeConfig.slippage}%
+• Max Gas: ${userData.snipeConfig.maxGasPrice} gwei
+
+**🔔 You will be notified when any target method is executed**
+
+**⚠️ Advanced Mode:** Sniping based on contract method calls.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⏸️ Pause Monitoring', callback_data: 'snipe_pause' }],
+            [{ text: '⚙️ Adjust Settings', callback_data: 'eth_snipe' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} started method monitoring for ${targetTokens.length} targets`);
+
+  } catch (error) {
+    console.log('Error starting method monitoring:', error);
+    await ctx.editMessageText(
+      `❌ **Failed to start method monitoring**
+
+${error.message}
+
+Please check your configuration and try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Method List', callback_data: 'snipe_set_strategy_contract_methods' }
+          ]]
+        }
+      }
+    );
+  }
+});
 
 // ====================================================================
 // ETH WALLET MANAGEMENT - YOUR WORKING CODE
@@ -2831,10 +3229,9 @@ bot.action(/^sell_retry_(.+)$/, async (ctx) => {
 });
 
 // ====================================================================
-// 🎯 SNIPING ENGINE - CHUNK 3: CORE EXECUTION & WEBSOCKET MONITORING
+// CHUNK 3: ENHANCED MONITORING LOGIC FOR TARGETED SNIPING
 // ====================================================================
 
-// Start snipe monitoring for a user
 async function startSnipeMonitoring(userId) {
   try {
     const userData = await loadUserData(userId);
@@ -2846,6 +3243,34 @@ async function startSnipeMonitoring(userId) {
     }
 
     console.log(`🎯 Starting snipe monitoring for user ${userId} with strategy: ${snipeConfig.strategy}`);
+
+    // Route to appropriate monitoring strategy
+    if (snipeConfig.strategy === 'new_pairs') {
+      // Existing degen mode logic - monitor ALL new pairs
+      await startDegenModeMonitoring(userId);
+    } else if (snipeConfig.strategy === 'first_liquidity') {
+      // New targeted liquidity monitoring
+      await startTargetedLiquidityMonitoring(userId);
+    } else if (snipeConfig.strategy === 'contract_methods') {
+      // New method monitoring
+      await startMethodMonitoring(userId);
+    } else {
+      throw new Error(`Unknown strategy: ${snipeConfig.strategy}`);
+    }
+
+  } catch (error) {
+    console.log(`❌ Failed to start snipe monitoring for user ${userId}:`, error.message);
+    throw error;
+  }
+}
+
+// RENAME your existing monitoring logic to this (keep the same code, just rename)
+async function startDegenModeMonitoring(userId) {
+  try {
+    const userData = await loadUserData(userId);
+    const snipeConfig = userData.snipeConfig;
+
+    console.log(`🚨 Starting DEGEN MODE monitoring for user ${userId} - will snipe ALL new pairs!`);
 
     // Get WebSocket provider for real-time monitoring
     const provider = await ethChain.getProvider();
@@ -2862,7 +3287,7 @@ async function startSnipeMonitoring(userId) {
       topics: [pairCreatedTopic]
     };
 
-    // Event handler function
+    // Event handler function - YOUR EXISTING LOGIC
     const eventHandler = async (log) => {
       try {
         console.log(`🔥 NEW PAIR DETECTED for user ${userId}! TX: ${log.transactionHash}`);
@@ -2894,19 +3319,14 @@ async function startSnipeMonitoring(userId) {
 
         console.log(`🎯 Target token identified: ${newTokenAddress}`);
 
-        // Execute snipe attempt
+        // Execute snipe attempt - YOUR EXISTING LOGIC
         await executeSnipeBuy(userId, newTokenAddress, snipeConfig.amount, log.transactionHash);
 
       } catch (error) {
         console.log(`❌ Error processing pair creation event for user ${userId}:`, error.message);
-
-        // Log detailed error for debugging
         if (error.stack) {
           console.log(`Stack trace:`, error.stack);
         }
-
-        // Don't crash the monitor for one failed event
-        // Continue monitoring for next opportunities
       }
     };
 
@@ -2919,19 +3339,209 @@ async function startSnipeMonitoring(userId) {
       filter, 
       handler: eventHandler,
       startTime: Date.now(),
-      strategy: snipeConfig.strategy
+      strategy: 'new_pairs',
+      mode: 'degen'
     });
 
-    console.log(`✅ Snipe monitoring started for user ${userId}`);
-    logger.info(`Snipe monitoring started for user ${userId} with ${snipeConfig.amount} ETH per snipe`);
+    console.log(`✅ DEGEN MODE monitoring started for user ${userId} - monitoring ALL new pairs`);
+    logger.info(`DEGEN MODE snipe monitoring started for user ${userId} with ${snipeConfig.amount} ETH per snipe`);
 
   } catch (error) {
-    console.log(`❌ Failed to start snipe monitoring for user ${userId}:`, error.message);
+    console.log(`❌ Failed to start degen mode monitoring for user ${userId}:`, error.message);
     throw error;
   }
 }
 
-// Stop snipe monitoring for a user
+// ADD new targeted liquidity monitoring function
+async function startTargetedLiquidityMonitoring(userId) {
+  try {
+    const userData = await loadUserData(userId);
+    const snipeConfig = userData.snipeConfig;
+    const targetTokens = snipeConfig.targetTokens?.filter(
+      t => t.strategy === 'first_liquidity' && t.status === 'waiting'
+    ) || [];
+
+    if (targetTokens.length === 0) {
+      throw new Error('No target tokens configured for liquidity monitoring');
+    }
+
+    console.log(`💧 Starting targeted liquidity monitoring for user ${userId} - ${targetTokens.length} tokens`);
+
+    const provider = await ethChain.getProvider();
+    const uniswapV2Factory = '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f';
+    const pairCreatedTopic = '0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31aaaffd8d4';
+
+    const filter = {
+      address: uniswapV2Factory,
+      topics: [pairCreatedTopic]
+    };
+
+    const eventHandler = async (log) => {
+      try {
+        // Parse event to get token addresses
+        const abiDecoder = new ethers.utils.Interface([
+          'event PairCreated(address indexed token0, address indexed token1, address pair, uint256)'
+        ]);
+
+        const decoded = abiDecoder.parseLog(log);
+        const token0 = decoded.args.token0.toLowerCase();
+        const token1 = decoded.args.token1.toLowerCase();
+        const pairAddress = decoded.args.pair;
+
+        console.log(`🔍 Checking pair: ${token0} / ${token1}`);
+
+        // Check if any of our target tokens are in this pair
+        const matchedToken = targetTokens.find(target => 
+          target.address === token0 || target.address === token1
+        );
+
+        if (matchedToken) {
+          console.log(`🎯 TARGET TOKEN LIQUIDITY DETECTED! ${matchedToken.address}`);
+
+          // Execute snipe for this specific token
+          await executeSnipeBuy(userId, matchedToken.address, snipeConfig.amount, log.transactionHash);
+
+          // Update token status in database
+          const currentUserData = await loadUserData(userId);
+          const tokenToUpdate = currentUserData.snipeConfig.targetTokens.find(
+            t => t.address === matchedToken.address && t.strategy === 'first_liquidity'
+          );
+
+          if (tokenToUpdate) {
+            tokenToUpdate.status = 'sniped';
+            tokenToUpdate.snipedAt = Date.now();
+            tokenToUpdate.txHash = log.transactionHash;
+            await saveUserData(userId, currentUserData);
+            console.log(`✅ Updated token status to 'sniped' for ${matchedToken.address}`);
+          }
+
+          // Notify user
+          try {
+            const displayName = matchedToken.label || `Token ${matchedToken.address.slice(0, 8)}...`;
+            await bot.telegram.sendMessage(
+              userId,
+              `🔥 **TARGET TOKEN SNIPED!**\n\n${displayName} liquidity detected and sniped!\n\n**TX:** ${log.transactionHash.slice(0, 10)}...\n**Pair:** ${pairAddress.slice(0, 10)}...`
+            );
+          } catch (notifyError) {
+            console.log(`⚠️ Failed to notify user ${userId}:`, notifyError.message);
+          }
+        }
+
+      } catch (error) {
+        console.log(`❌ Error processing targeted liquidity event:`, error.message);
+      }
+    };
+
+    provider.on(filter, eventHandler);
+
+    activeSnipeMonitors.set(userId, { 
+      provider, 
+      filter, 
+      handler: eventHandler,
+      startTime: Date.now(),
+      strategy: 'first_liquidity',
+      targetCount: targetTokens.length,
+      mode: 'targeted'
+    });
+
+    console.log(`✅ Targeted liquidity monitoring started for ${targetTokens.length} tokens`);
+    logger.info(`Targeted liquidity monitoring started for user ${userId} with ${targetTokens.length} target tokens`);
+
+  } catch (error) {
+    console.log(`❌ Failed to start targeted liquidity monitoring for user ${userId}:`, error.message);
+    throw error;
+  }
+}
+
+// ADD new method monitoring function
+async function startMethodMonitoring(userId) {
+  try {
+    const userData = await loadUserData(userId);
+    const snipeConfig = userData.snipeConfig;
+    const targetTokens = snipeConfig.targetTokens?.filter(
+      t => t.strategy === 'contract_methods' && t.status === 'waiting'
+    ) || [];
+
+    if (targetTokens.length === 0) {
+      throw new Error('No method targets configured for monitoring');
+    }
+
+    console.log(`🔧 Starting method monitoring for user ${userId} - ${targetTokens.length} targets`);
+
+    const provider = await ethChain.getProvider();
+
+    // Create filters for each target token + method combination
+    const filters = targetTokens.map(target => ({
+      address: target.address,
+      topics: [target.method] // Method signature as topic
+    }));
+
+    const eventHandlers = [];
+
+    for (let i = 0; i < targetTokens.length; i++) {
+      const target = targetTokens[i];
+      const filter = filters[i];
+
+      const eventHandler = async (log) => {
+        try {
+          console.log(`🔧 METHOD CALL DETECTED! Contract: ${target.address}, Method: ${target.method}`);
+
+          // Execute snipe for this token
+          await executeSnipeBuy(userId, target.address, snipeConfig.amount, log.transactionHash);
+
+          // Update token status
+          const currentUserData = await loadUserData(userId);
+          const tokenToUpdate = currentUserData.snipeConfig.targetTokens.find(
+            t => t.address === target.address && t.strategy === 'contract_methods' && t.method === target.method
+          );
+
+          if (tokenToUpdate) {
+            tokenToUpdate.status = 'sniped';
+            tokenToUpdate.snipedAt = Date.now();
+            tokenToUpdate.txHash = log.transactionHash;
+            await saveUserData(userId, currentUserData);
+          }
+
+          // Notify user
+          try {
+            const displayName = target.label || `Token ${target.address.slice(0, 8)}...`;
+            await bot.telegram.sendMessage(
+              userId,
+              `🔥 **METHOD CALL SNIPED!**\n\n${displayName} method ${target.method} executed and sniped!\n\n**TX:** ${log.transactionHash.slice(0, 10)}...`
+            );
+          } catch (notifyError) {
+            console.log(`⚠️ Failed to notify user ${userId}:`, notifyError.message);
+          }
+
+        } catch (error) {
+          console.log(`❌ Error processing method call event:`, error.message);
+        }
+      };
+
+      provider.on(filter, eventHandler);
+      eventHandlers.push({ filter, handler: eventHandler });
+    }
+
+    // Store all filters and handlers for cleanup
+    activeSnipeMonitors.set(userId, { 
+      provider, 
+      filters: eventHandlers, // Multiple filters for method monitoring
+      startTime: Date.now(),
+      strategy: 'contract_methods',
+      targetCount: targetTokens.length,
+      mode: 'method_targeted'
+    });
+
+    console.log(`✅ Method monitoring started for ${targetTokens.length} method targets`);
+    logger.info(`Method monitoring started for user ${userId} with ${targetTokens.length} method targets`);
+
+  } catch (error) {
+    console.log(`❌ Failed to start method monitoring for user ${userId}:`, error.message);
+    throw error;
+  }
+}
+
+// ENHANCE your existing stopSnipeMonitoring function to handle multiple filters
 async function stopSnipeMonitoring(userId) {
   try {
     if (!activeSnipeMonitors.has(userId)) {
@@ -2941,10 +3551,17 @@ async function stopSnipeMonitoring(userId) {
 
     const monitor = activeSnipeMonitors.get(userId);
 
-    // Remove event listener
-    if (monitor.provider && monitor.filter && monitor.handler) {
+    // Handle different monitoring modes
+    if (monitor.mode === 'method_targeted' && monitor.filters) {
+      // Method monitoring has multiple filters
+      for (const filterHandler of monitor.filters) {
+        monitor.provider.off(filterHandler.filter, filterHandler.handler);
+      }
+      console.log(`🛑 Stopped method monitoring for user ${userId} (${monitor.filters.length} targets)`);
+    } else if (monitor.provider && monitor.filter && monitor.handler) {
+      // Single filter monitoring (degen mode, targeted liquidity)
       monitor.provider.off(monitor.filter, monitor.handler);
-      console.log(`🛑 Stopped snipe monitoring for user ${userId}`);
+      console.log(`🛑 Stopped ${monitor.mode || monitor.strategy} monitoring for user ${userId}`);
     }
 
     // Remove from active monitors
@@ -2958,296 +3575,395 @@ async function stopSnipeMonitoring(userId) {
   }
 }
 
-// Execute snipe buy - REUSES YOUR EXISTING BUY LOGIC!
-async function executeSnipeBuy(userId, tokenAddress, amount, originalTxHash = null) {
-  const snipeStartTime = Date.now();
+// ENHANCE cleanup function for new monitoring types
+function cleanupSnipeMonitors() {
+  console.log(`🧹 Cleaning up ${activeSnipeMonitors.size} active snipe monitors...`);
 
-  try {
-    console.log(`🎯 EXECUTING SNIPE: User ${userId}, Token ${tokenAddress}, Amount ${amount} ETH`);
-
-    // Check rate limits
+  for (const [userId, monitor] of activeSnipeMonitors.entries()) {
     try {
-      checkSnipeRateLimit(userId);
-    } catch (rateLimitError) {
-      console.log(`⚠️ Snipe rate limit exceeded for user ${userId}: ${rateLimitError.message}`);
-      return;
-    }
-
-    const userData = await loadUserData(userId);
-    const wallet = await getWalletForTrading(userId, userData);
-
-    // Check wallet balance
-    const balance = await ethChain.getETHBalance(wallet.address);
-    const balanceFloat = parseFloat(balance);
-    const requiredBalance = amount + 0.05; // Amount + gas buffer
-
-    if (balanceFloat < requiredBalance) {
-      console.log(`⚠️ Insufficient balance for snipe: ${balanceFloat} ETH < ${requiredBalance} ETH required`);
-
-      // Notify user of insufficient balance (don't spam)
-      if (Math.random() < 0.1) { // Only notify 10% of the time
-        await bot.telegram.sendMessage(
-          userId,
-          `⚠️ **Snipe Failed - Insufficient Balance**\n\nRequired: ${requiredBalance} ETH\nAvailable: ${balance} ETH`
-        );
-      }
-      return;
-    }
-
-    // Get token info (with timeout for speed)
-    let tokenInfo;
-    try {
-      const tokenInfoPromise = ethChain.getTokenInfo(tokenAddress);
-      tokenInfo = await Promise.race([
-        tokenInfoPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Token info timeout')), 10000))
-      ]);
-    } catch (tokenError) {
-      console.log(`⚠️ Could not get token info, proceeding with snipe anyway: ${tokenError.message}`);
-      tokenInfo = { name: 'Unknown', symbol: 'TOKEN', decimals: 18 };
-    }
-
-    // Calculate fee amounts (SAME AS MANUAL BUY)
-    const totalAmount = parseFloat(amount);
-    const feePercent = userData.premium?.active ? 0.5 : 1.0;
-    const feeAmount = totalAmount * (feePercent / 100);
-    const netTradeAmount = totalAmount - feeAmount;
-
-    console.log(`💰 Snipe fee calculation: Total ${totalAmount} ETH, Fee ${feeAmount} ETH, Trade ${netTradeAmount} ETH`);
-
-    // ====================================================================
-    // EXECUTE MAIN TRADE (REUSES YOUR EXISTING SWAP LOGIC!)
-    // ====================================================================
-    console.log(`🚀 Executing snipe trade: ${netTradeAmount} ETH -> ${tokenAddress}`);
-
-    const swapResult = await ethChain.executeSwap(
-      ethChain.contracts.WETH,
-      tokenAddress,
-      ethers.utils.parseEther(netTradeAmount.toString()),
-      wallet.privateKey,
-      userData.snipeConfig?.slippage || 10 // Use user's snipe slippage setting
-    );
-
-    console.log(`✅ Snipe trade executed! Hash: ${swapResult.hash}`);
-
-    // ====================================================================
-    // COLLECT FEE (SAME AS MANUAL BUY - NON-BLOCKING)
-    // ====================================================================
-    let feeResult = null;
-    if (feeAmount > 0) {
-      try {
-        console.log(`💰 Collecting snipe fee: ${feeAmount} ETH`);
-        feeResult = await ethChain.collectFee(
-          wallet.privateKey,
-          feeAmount.toString()
-        );
-        if (feeResult) {
-          console.log(`✅ Snipe fee collected! Hash: ${feeResult.hash}`);
+      if (monitor.mode === 'method_targeted' && monitor.filters) {
+        // Method monitoring cleanup
+        for (const filterHandler of monitor.filters) {
+          monitor.provider.off(filterHandler.filter, filterHandler.handler);
         }
-      } catch (feeError) {
-        console.log(`⚠️ Snipe fee collection failed (non-blocking): ${feeError.message}`);
-        // Don't fail the snipe for fee collection issues
+        console.log(`✅ Cleaned up method monitoring for user ${userId}`);
+      } else if (monitor.provider && monitor.filter && monitor.handler) {
+        // Single filter cleanup
+        monitor.provider.off(monitor.filter, monitor.handler);
+        console.log(`✅ Cleaned up ${monitor.mode || monitor.strategy} monitoring for user ${userId}`);
       }
+    } catch (error) {
+      console.log(`⚠️ Error cleaning up snipe monitor for user ${userId}:`, error.message);
     }
-
-    // ====================================================================
-    // RECORD SUCCESS & NOTIFY USER
-    // ====================================================================
-    const executionTime = Date.now() - snipeStartTime;
-
-    // Record snipe transaction
-    await recordTransaction(userId, {
-      type: 'snipe',
-      tokenAddress,
-      amount: totalAmount.toString(),
-      tradeAmount: netTradeAmount.toString(),
-      feeAmount: feeAmount.toString(),
-      txHash: swapResult.hash,
-      feeHash: feeResult?.hash || null,
-      timestamp: Date.now(),
-      chain: 'ethereum',
-      autoExecuted: true,
-      executionTimeMs: executionTime,
-      originalPairTx: originalTxHash,
-      snipeStrategy: userData.snipeConfig?.strategy || 'new_pairs'
-    });
-
-    // Track revenue
-    await trackRevenue(feeAmount);
-
-    // Success notification to user
-    await bot.telegram.sendMessage(
-      userId,
-      `🎯 **SNIPE SUCCESSFUL!**
-
-✅ **Sniped:** ${tokenInfo.symbol || 'TOKEN'}
-💰 **Amount:** ${netTradeAmount.toFixed(6)} ETH
-🏦 **Fee:** ${feeAmount.toFixed(6)} ETH (${feePercent}%)
-⚡ **Speed:** ${(executionTime / 1000).toFixed(2)}s
-🔗 **TX:** [View on Etherscan](https://etherscan.io/tx/${swapResult.hash})
-
-**Hash:** \`${swapResult.hash}\`
-
-🎉 Tokens should appear in your wallet shortly!`,
-      { 
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📈 Sell Tokens', callback_data: 'eth_sell' }],
-            [{ text: '🎯 Snipe Settings', callback_data: 'eth_snipe' }]
-          ]
-        }
-      }
-    );
-
-    // Enhanced logging
-    console.log(`🎉 SNIPE SUCCESS SUMMARY:`);
-    console.log(`   User: ${userId}`);
-    console.log(`   Token: ${tokenAddress} (${tokenInfo.symbol})`);
-    console.log(`   Amount: ${totalAmount} ETH (${netTradeAmount} trade + ${feeAmount} fee)`);
-    console.log(`   Execution Time: ${executionTime}ms`);
-    console.log(`   Trade TX: ${swapResult.hash}`);
-    console.log(`   Fee TX: ${feeResult?.hash || 'Failed'}`);
-
-    logger.info(`Successful snipe: User ${userId}, Token ${tokenAddress}, Amount ${totalAmount} ETH, Time ${executionTime}ms`);
-
-  } catch (error) {
-    const executionTime = Date.now() - snipeStartTime;
-
-    console.log(`❌ SNIPE EXECUTION FAILED for user ${userId}:`, error.message);
-
-    // Record failed snipe attempt
-    try {
-      await recordTransaction(userId, {
-        type: 'snipe',
-        tokenAddress,
-        amount: amount.toString(),
-        failed: true,
-        failureReason: error.message,
-        timestamp: Date.now(),
-        chain: 'ethereum',
-        autoExecuted: true,
-        executionTimeMs: executionTime,
-        originalPairTx: originalTxHash
-      });
-    } catch (recordError) {
-      console.log('Failed to record failed snipe:', recordError.message);
-    }
-
-    // Only notify user of failures occasionally (avoid spam)
-    if (Math.random() < 0.05) { // 5% chance to notify
-      try {
-        await bot.telegram.sendMessage(
-          userId,
-          `⚠️ **Snipe attempt failed**\n\n${error.message}\n\n💡 This is normal - continue monitoring for next opportunity.`
-        );
-      } catch (notifyError) {
-        console.log('Failed to notify user of snipe failure:', notifyError.message);
-      }
-    }
-
-    logger.warn(`Failed snipe attempt: User ${userId}, Token ${tokenAddress}, Error: ${error.message}`);
   }
+
+  activeSnipeMonitors.clear();
+  console.log(`✅ All snipe monitors cleaned up`);
 }
-
-// Snipe history handler
-bot.action('snipe_history', async (ctx) => {
-  const userId = ctx.from.id.toString();
-
-  try {
-    const userData = await loadUserData(userId);
-    const snipeTransactions = (userData.transactions || [])
-      .filter(tx => tx.type === 'snipe')
-      .slice(-10) // Last 10 snipes
-      .reverse(); // Most recent first
-
-    if (snipeTransactions.length === 0) {
-      await ctx.editMessageText(
-        `📊 **SNIPE HISTORY**
-
-No snipe attempts yet.
-
-Start sniping to see your history here!`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '▶️ Start Sniping', callback_data: 'snipe_start' }],
-              [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
-            ]
-          }
-        }
-      );
-      return;
-    }
-
-    let historyText = `📊 **SNIPE HISTORY**\n\n**Last ${snipeTransactions.length} Attempts:**\n\n`;
-
-    snipeTransactions.forEach((tx, index) => {
-      const date = new Date(tx.timestamp).toLocaleDateString();
-      const time = new Date(tx.timestamp).toLocaleTimeString();
-      const success = tx.txHash && !tx.failed ? '✅' : '❌';
-      const amount = parseFloat(tx.amount || 0).toFixed(4);
-      const executionTime = tx.executionTimeMs ? `${(tx.executionTimeMs / 1000).toFixed(2)}s` : 'N/A';
-
-      historyText += `**${index + 1}.** ${success} ${amount} ETH - ${executionTime}\n`;
-      historyText += `📅 ${date} ${time}\n`;
-
-      if (tx.txHash) {
-        historyText += `🔗 [View TX](https://etherscan.io/tx/${tx.txHash})\n`;
-      } else if (tx.failureReason) {
-        historyText += `💭 ${tx.failureReason.substring(0, 50)}...\n`;
-      }
-
-      historyText += `\n`;
-    });
-
-    // Calculate success rate
-    const successful = snipeTransactions.filter(tx => tx.txHash && !tx.failed).length;
-    const successRate = snipeTransactions.length > 0 ? Math.round((successful / snipeTransactions.length) * 100) : 0;
-
-    historyText += `**📈 Success Rate:** ${successRate}% (${successful}/${snipeTransactions.length})`;
-
-    await ctx.editMessageText(historyText, {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔄 Refresh', callback_data: 'snipe_history' }],
-          [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
-        ]
-      },
-      parse_mode: 'Markdown'
-    });
-
-  } catch (error) {
-    await ctx.editMessageText(
-      `❌ **Error loading snipe history**
-
-${error.message}`,
-      {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }
-          ]]
-        }
-      }
-    );
-  }
-});
-
-// Enhanced bot error handling to include snipe monitors
-const originalCallbackHandler = bot.on.bind(bot);
-
-// Override cleanup to include snipe monitors
-const originalCleanup = cleanupSnipeMonitors;
-function enhancedCleanup() {
-  originalCleanup();
-  // Any additional cleanup can go here
-}
-
-console.log('🎯 CHUNK 3 LOADED: Core sniping engine and WebSocket monitoring ready!');
 
 // ====================================================================
 // 🎯 SNIPING ENGINE - CHUNK 4: FINAL INTEGRATION & ENHANCED STARTUP
 // ====================================================================
+
+// ====================================================================
+// CHUNK 4: MESSAGE HANDLERS + INPUT PROCESSING
+// ====================================================================
+
+// ADD these message handler functions for token input processing
+
+// Handle liquidity token address input
+async function handleLiquidityTokenInput(ctx, userId) {
+  const input = ctx.message.text.trim();
+  const parts = input.split(/\s+/);
+  const tokenAddress = parts[0];
+  const tokenLabel = parts.slice(1).join(' ') || null;
+
+  try {
+    userStates.delete(userId);
+
+    // Validate address format
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format. Must be 42 characters starting with 0x');
+    }
+
+    // Get current user data
+    const userData = await loadUserData(userId);
+
+    // Initialize targetTokens array if it doesn't exist
+    if (!userData.snipeConfig.targetTokens) {
+      userData.snipeConfig.targetTokens = [];
+    }
+
+    // Check if token already exists
+    const existingToken = userData.snipeConfig.targetTokens.find(
+      t => t.address.toLowerCase() === tokenAddress.toLowerCase() && t.strategy === 'first_liquidity'
+    );
+
+    if (existingToken) {
+      throw new Error('This token is already in your liquidity watch list');
+    }
+
+    // Try to get token info for validation (optional)
+    let tokenInfo = null;
+    try {
+      tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+      console.log(`✅ Token validated: ${tokenInfo.name} (${tokenInfo.symbol})`);
+    } catch (tokenError) {
+      console.log(`⚠️ Could not validate token info, but proceeding anyway: ${tokenError.message}`);
+    }
+
+    // Add new target token
+    const newToken = {
+      address: tokenAddress.toLowerCase(),
+      strategy: 'first_liquidity',
+      label: tokenLabel || (tokenInfo ? `${tokenInfo.name} (${tokenInfo.symbol})` : null),
+      status: 'waiting',
+      addedAt: Date.now()
+    };
+
+    userData.snipeConfig.targetTokens.push(newToken);
+    await saveUserData(userId, userData);
+
+    console.log(`✅ Added liquidity target token for user ${userId}: ${tokenAddress}`);
+
+    const displayName = newToken.label || `Token ${tokenAddress.slice(0, 8)}...`;
+
+    await ctx.reply(
+      `✅ **Token added to liquidity watch list!**
+
+**Address:** \`${tokenAddress}\`
+**Name:** ${displayName}
+**Strategy:** First Liquidity Events
+
+The bot will now monitor this token for liquidity addition events and snipe when detected.
+
+**💡 Tip:** You can add more tokens or start monitoring when ready!`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '➕ Add Another Token', callback_data: 'add_liquidity_token' }],
+            [{ text: '▶️ Start Monitoring', callback_data: 'start_liquidity_snipe' }],
+            [{ text: '🔙 Back to Token List', callback_data: 'snipe_set_strategy_first_liquidity' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid token contract address.
+
+**Valid format:** \`0x1234567890abcdef1234567890abcdef12345678\`
+**With name:** \`0x123...abc Token Name\``,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'add_liquidity_token' }],
+            [{ text: '🔙 Back to Strategy', callback_data: 'snipe_set_strategy_first_liquidity' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+}
+
+// Handle method token + signature input
+async function handleMethodTokenInput(ctx, userId) {
+  const input = ctx.message.text.trim();
+  const parts = input.split(/\s+/);
+
+  if (parts.length < 2) {
+    userStates.delete(userId);
+    await ctx.reply(
+      `❌ **Invalid format!**
+
+You need to provide both token address AND method signature.
+
+**Format:** \`TokenAddress MethodSignature [TokenName]\`
+**Example:** \`0x123...abc 0x095ea7b3 MEME Token\``,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'add_method_token' }],
+            [{ text: '📖 Common Methods', callback_data: 'show_common_methods' }],
+            [{ text: '🔙 Back to Strategy', callback_data: 'snipe_set_strategy_contract_methods' }]
+          ]
+        }
+      }
+    );
+    return;
+  }
+
+  const tokenAddress = parts[0];
+  const methodSignature = parts[1];
+  const tokenLabel = parts.slice(2).join(' ') || null;
+
+  try {
+    userStates.delete(userId);
+
+    // Validate address format
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format. Must be 42 characters starting with 0x');
+    }
+
+    // Validate method signature format
+    if (!methodSignature.match(/^0x[a-fA-F0-9]{8}$/)) {
+      throw new Error('Invalid method signature format. Must be 10 characters starting with 0x (e.g., 0x095ea7b3)');
+    }
+
+    // Get current user data
+    const userData = await loadUserData(userId);
+
+    // Initialize targetTokens array if it doesn't exist
+    if (!userData.snipeConfig.targetTokens) {
+      userData.snipeConfig.targetTokens = [];
+    }
+
+    // Check if this exact combination already exists
+    const existingToken = userData.snipeConfig.targetTokens.find(
+      t => t.address.toLowerCase() === tokenAddress.toLowerCase() && 
+           t.strategy === 'contract_methods' && 
+           t.method.toLowerCase() === methodSignature.toLowerCase()
+    );
+
+    if (existingToken) {
+      throw new Error('This token + method combination is already in your watch list');
+    }
+
+    // Try to get token info for validation (optional)
+    let tokenInfo = null;
+    try {
+      tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+      console.log(`✅ Token validated: ${tokenInfo.name} (${tokenInfo.symbol})`);
+    } catch (tokenError) {
+      console.log(`⚠️ Could not validate token info, but proceeding anyway: ${tokenError.message}`);
+    }
+
+    // Add new method target
+    const newToken = {
+      address: tokenAddress.toLowerCase(),
+      strategy: 'contract_methods',
+      method: methodSignature.toLowerCase(),
+      label: tokenLabel || (tokenInfo ? `${tokenInfo.name} (${tokenInfo.symbol})` : null),
+      status: 'waiting',
+      addedAt: Date.now()
+    };
+
+    userData.snipeConfig.targetTokens.push(newToken);
+    await saveUserData(userId, userData);
+
+    console.log(`✅ Added method target for user ${userId}: ${tokenAddress} + ${methodSignature}`);
+
+    const displayName = newToken.label || `Token ${tokenAddress.slice(0, 8)}...`;
+
+    await ctx.reply(
+      `✅ **Method target added to watch list!**
+
+**Address:** \`${tokenAddress}\`
+**Method:** \`${methodSignature}\`
+**Name:** ${displayName}
+**Strategy:** Contract Methods
+
+The bot will now monitor this contract for the specified method call and snipe when executed.
+
+**💡 Tip:** You can add more method targets or start monitoring when ready!`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '➕ Add Another Target', callback_data: 'add_method_token' }],
+            [{ text: '▶️ Start Monitoring', callback_data: 'start_method_snipe' }],
+            [{ text: '🔙 Back to Method List', callback_data: 'snipe_set_strategy_contract_methods' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please check your input and try again.
+
+**Valid format:** \`TokenAddress MethodSignature [TokenName]\`
+**Example:** \`0x123...abc 0x095ea7b3 MEME Token\``,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'add_method_token' }],
+            [{ text: '📖 Common Methods', callback_data: 'show_common_methods' }],
+            [{ text: '🔙 Back to Strategy', callback_data: 'snipe_set_strategy_contract_methods' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+}
+
+// ENHANCE your existing message handling logic
+// Find your existing bot.on('text') handler and ADD these cases to it
+
+// ADD this to your existing message handler routing logic:
+/*
+// Add these cases to your existing message handler:
+
+if (userState?.action === 'waiting_liquidity_token') {
+  await handleLiquidityTokenInput(ctx, userId);
+  return;
+}
+
+if (userState?.action === 'waiting_method_token') {
+  await handleMethodTokenInput(ctx, userId);
+  return;
+}
+*/
+
+// If you don't have a message handler yet, ADD this complete handler:
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const userState = userStates.get(userId);
+
+  // Skip if no state (normal conversation)
+  if (!userState) {
+    return;
+  }
+
+  try {
+    // Route to appropriate input handler based on state
+    if (userState.action === 'waiting_eth_private_key') {
+      await handleEthPrivateKeyImport(ctx, userId);
+    } else if (userState.action === 'waiting_token_address') {
+      await handleTokenAddress(ctx, userId);
+    } else if (userState.action === 'waiting_custom_amount') {
+      await handleCustomAmount(ctx, userId, userState.tokenAddress);
+    } else if (userState.action === 'waiting_sell_token_address') {
+      await handleSellTokenAddress(ctx, userId);
+    } else if (userState.action === 'waiting_sell_custom_amount') {
+      await handleSellCustomAmount(ctx, userId, userState.tokenAddress);
+    } else if (userState.action === 'waiting_liquidity_token') {
+      await handleLiquidityTokenInput(ctx, userId);
+    } else if (userState.action === 'waiting_method_token') {
+      await handleMethodTokenInput(ctx, userId);
+    } else {
+      // Unknown state, clear it
+      userStates.delete(userId);
+      await ctx.reply('❌ Session expired. Please try again.');
+    }
+  } catch (error) {
+    console.log('Error in message handler:', error);
+    userStates.delete(userId);
+    await ctx.reply('❌ An error occurred. Please try again.');
+  }
+});
+
+// ADD helper function to get method name from signature (optional enhancement)
+function getMethodName(signature) {
+  const methodNames = {
+    '0x095ea7b3': 'approve',
+    '0xa9059cbb': 'transfer', 
+    '0x23b872dd': 'transferFrom',
+    '0xf305d719': 'addLiquidity',
+    '0xe8e33700': 'addLiquidityETH',
+    '0x38ed1739': 'swapExactTokensForTokens',
+    '0x8803dbee': 'swapTokensForExactTokens',
+    '0x7ff36ab5': 'swapExactETHForTokens',
+    '0x18cbafe5': 'swapExactTokensForETH'
+  };
+
+  return methodNames[signature.toLowerCase()] || 'Unknown Method';
+}
+
+// ADD validation helper for better error messages
+function validateEthereumAddress(address) {
+  if (!address) {
+    return { valid: false, error: 'Address is required' };
+  }
+
+  if (!address.startsWith('0x')) {
+    return { valid: false, error: 'Address must start with 0x' };
+  }
+
+  if (address.length !== 42) {
+    return { valid: false, error: 'Address must be exactly 42 characters long' };
+  }
+
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    return { valid: false, error: 'Address contains invalid characters. Use only 0-9 and a-f' };
+  }
+
+  return { valid: true };
+}
+
+function validateMethodSignature(signature) {
+  if (!signature) {
+    return { valid: false, error: 'Method signature is required' };
+  }
+
+  if (!signature.startsWith('0x')) {
+    return { valid: false, error: 'Method signature must start with 0x' };
+  }
+
+  if (signature.length !== 10) {
+    return { valid: false, error: 'Method signature must be exactly 10 characters long' };
+  }
+
+  if (!/^0x[a-fA-F0-9]{8}$/.test(signature)) {
+    return { valid: false, error: 'Method signature contains invalid characters. Use only 0-9 and a-f' };
+  }
+
+  return { valid: true };
+}
+
+console.log('🎯 CHUNK 4 LOADED: Message handlers and input processing ready!');
 
 // Enhanced bot startup with sniping system integration
 async function initializeBot() {
