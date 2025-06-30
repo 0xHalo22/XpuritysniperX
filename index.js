@@ -532,6 +532,7 @@ async function showSnipeConfiguration(ctx, userData) {
   // Get snipe statistics
   const snipeStats = await getSnipeStatistics(userId);
 
+  // UPDATED KEYBOARD LAYOUT:
   const keyboard = [
     [{ 
       text: snipeConfig.active ? '⏸️ PAUSE SNIPING' : '▶️ START SNIPING', 
@@ -542,12 +543,11 @@ async function showSnipeConfiguration(ctx, userData) {
       { text: `⚡ Slippage: ${snipeConfig.slippage}%`, callback_data: 'snipe_config_slippage' }
     ],
     [
-      { text: `🎯 Strategy: ${getStrategyDisplayName(snipeConfig.strategy)}`, callback_data: 'snipe_config_strategy' },
+      { text: '📊 Snipe History', callback_data: 'snipe_history' },
       { text: `⛽ Max Gas: ${snipeConfig.maxGasPrice} gwei`, callback_data: 'snipe_config_gas' }
     ],
     [
-      { text: '📊 Snipe History', callback_data: 'snipe_history' },
-      { text: '📈 Statistics', callback_data: 'snipe_stats' }
+      { text: `🎯 Strategy: ${getStrategyDisplayName(snipeConfig.strategy)}`, callback_data: 'snipe_config_strategy' }
     ],
     [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
   ];
@@ -562,16 +562,16 @@ async function showSnipeConfiguration(ctx, userData) {
 **Status:** ${statusIcon} ${statusText}
 
 **⚙️ CURRENT SETTINGS:**
-• **Amount:** ${snipeConfig.amount} ETH per snipe
-• **Strategy:** ${getStrategyDisplayName(snipeConfig.strategy)}
-• **Slippage:** ${snipeConfig.slippage}%
-• **Max Gas:** ${snipeConfig.maxGasPrice} gwei
-• **Rate Limit:** ${snipeConfig.maxPerHour} snipes/hour
+- **Amount:** ${snipeConfig.amount} ETH per snipe
+- **Strategy:** ${getStrategyDisplayName(snipeConfig.strategy)}
+- **Slippage:** ${snipeConfig.slippage}%
+- **Max Gas:** ${snipeConfig.maxGasPrice} gwei
+- **Rate Limit:** ${snipeConfig.maxPerHour} snipes/hour
 
 **📊 TODAY'S STATS:**
-• **Attempts:** ${snipeStats.todayAttempts}
-• **Successful:** ${snipeStats.todaySuccessful}
-• **Success Rate:** ${snipeStats.successRate}%
+- **Attempts:** ${snipeStats.todayAttempts}
+- **Successful:** ${snipeStats.todaySuccessful}
+- **Success Rate:** ${snipeStats.successRate}%
 
 ${snipeConfig.active ? 
   '⚡ **Ready to snipe new pairs on Uniswap!**' : 
@@ -867,6 +867,8 @@ bot.action(/^snipe_set_strategy_(.+)$/, async (ctx) => {
     const strategy = ctx.match[1];
     const userId = ctx.from.id.toString();
 
+  
+
     // Map the callback data to internal strategy names
     const strategyMap = {
       'first_liquidity': 'first_liquidity',
@@ -903,6 +905,73 @@ bot.action(/^snipe_set_strategy_(.+)$/, async (ctx) => {
       await ctx.answerCbQuery('❌ Failed to update strategy');
     }
   });
+
+bot.action('snipe_config_gas', async (ctx) => {
+  const keyboard = [
+    [
+      { text: '30 gwei (Slow)', callback_data: 'snipe_set_gas_30' },
+      { text: '50 gwei (Standard)', callback_data: 'snipe_set_gas_50' }
+    ],
+    [
+      { text: '100 gwei (Fast)', callback_data: 'snipe_set_gas_100' },
+      { text: '200 gwei (Aggressive)', callback_data: 'snipe_set_gas_200' }
+    ],
+    [
+      { text: '300 gwei (Turbo)', callback_data: 'snipe_set_gas_300' },
+      { text: '500 gwei (EXTREME)', callback_data: 'snipe_set_gas_500' }
+    ],
+    [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+  ];
+
+  await ctx.editMessageText(
+    `⛽ **MAX GAS PRICE CONFIGURATION**
+
+Select maximum gas price for snipe transactions:
+
+**💡 Gas Price Guide:**
+• **30-50 gwei:** Slow, may miss fast opportunities
+• **100-200 gwei:** Good balance of speed and cost
+• **300-500 gwei:** Maximum speed, high cost
+
+**⚠️ Higher gas = faster execution but higher fees**
+
+**Current Network Gas:** Check etherscan.io/gastracker`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// ====================================================================
+// 3. ADD GAS SETTING UPDATE HANDLER
+// ====================================================================
+
+bot.action(/^snipe_set_gas_(.+)$/, async (ctx) => {
+  const maxGasPrice = parseInt(ctx.match[1]);
+  const userId = ctx.from.id.toString();
+
+  try {
+    await updateSnipeConfig(userId, { maxGasPrice });
+
+    // Custom messages based on gas level
+    let successMessage;
+    if (maxGasPrice <= 50) {
+      successMessage = `✅ Gas set to ${maxGasPrice} gwei (Conservative)`;
+    } else if (maxGasPrice <= 200) {
+      successMessage = `✅ Gas set to ${maxGasPrice} gwei (Balanced)`;
+    } else {
+      successMessage = `🚀 Gas set to ${maxGasPrice} gwei (AGGRESSIVE!)`;
+    }
+
+    await ctx.answerCbQuery(successMessage);
+
+    const userData = await loadUserData(userId);
+    await showSnipeConfiguration(ctx, userData);
+  } catch (error) {
+    await ctx.answerCbQuery('❌ Failed to update gas settings');
+  }
+});
 
 // Helper function to get strategy display names with proper formatting
 function getStrategyDisplayName(strategy) {
