@@ -636,7 +636,7 @@ Please add more ETH to your wallet before starting sniping.`,
 • Strategy: ${userData.snipeConfig.strategy}
 • Slippage: ${userData.snipeConfig.slippage}%
 
-**🔔 You'll be notified of all snipe attempts**
+**🔔 You will be notified of all snipe attempts**
 
 **⚠️ Warning:** Sniping is high-risk. Only snipe what you can afford to lose.`,
       {
