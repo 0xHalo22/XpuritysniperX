@@ -3602,14 +3602,9 @@ function cleanupSnipeMonitors() {
 }
 
 // ====================================================================
-// 🎯 SNIPING ENGINE - CHUNK 4: FINAL INTEGRATION & ENHANCED STARTUP
+// 🎯 SNIPING ENGINE - CHUNK 4: ENHANCED STARTUP
 // ====================================================================
 
-// ====================================================================
-// CHUNK 4: MESSAGE HANDLERS + INPUT PROCESSING
-// ====================================================================
-
-// ADD these message handler functions for token input processing
 
 // Handle liquidity token address input
 async function handleLiquidityTokenInput(ctx, userId) {
@@ -4069,7 +4064,35 @@ async function restoreActiveSnipeMonitors() {
     // Don't fail bot startup for this
   }
 }
+// Helper function to get snipe statistics
+async function getSnipeStatistics(userId) {
+  try {
+    const userData = await loadUserData(userId);
+    const today = new Date().toDateString();
 
+    const todayTransactions = (userData.transactions || []).filter(tx => 
+      tx.type === 'snipe' && new Date(tx.timestamp).toDateString() === today
+    );
+
+    const todayAttempts = todayTransactions.length;
+    const todaySuccessful = todayTransactions.filter(tx => tx.txHash && !tx.failed).length;
+    const successRate = todayAttempts > 0 ? Math.round((todaySuccessful / todayAttempts) * 100) : 0;
+
+    return {
+      todayAttempts,
+      todaySuccessful,
+      successRate,
+      totalAttempts: (userData.transactions || []).filter(tx => tx.type === 'snipe').length
+    };
+  } catch (error) {
+    return {
+      todayAttempts: 0,
+      todaySuccessful: 0,
+      successRate: 0,
+      totalAttempts: 0
+    };
+  }
+}
 // Enhanced startup function with sniping integration
 async function startBot() {
   try {
