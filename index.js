@@ -204,6 +204,64 @@ setInterval(() => {
 
 console.log('🎯 CHUNK 1 LOADED: Sniping data structures and state management ready!');
 
+// Helper function to get human-readable strategy display names
+function getStrategyDisplayName(strategy) {
+  const strategyNames = {
+    'new_pairs': 'New Pairs (Degen Mode)',
+    'first_liquidity': 'First Liquidity Events', 
+    'contract_methods': 'Contract Methods'
+  };
+
+  return strategyNames[strategy] || 'Unknown Strategy';
+}
+
+// Function to get snipe statistics for display
+async function getSnipeStatistics(userId) {
+  try {
+    const userData = await loadUserData(userId);
+    const transactions = userData.transactions || [];
+
+    const snipeTransactions = transactions.filter(tx => 
+      tx.type === 'snipe' && tx.timestamp
+    );
+
+    const now = Date.now();
+    const oneDayAgo = now - (24 * 60 * 60 * 1000);
+
+    const todaySnipes = snipeTransactions.filter(tx => 
+      tx.timestamp > oneDayAgo
+    );
+
+    const todaySuccessful = todaySnipes.filter(tx => 
+      tx.status === 'completed' || tx.hash
+    );
+
+    const successRate = todaySnipes.length > 0 
+      ? Math.round((todaySuccessful.length / todaySnipes.length) * 100)
+      : 0;
+
+    return {
+      todayAttempts: todaySnipes.length,
+      todaySuccessful: todaySuccessful.length,
+      successRate: successRate,
+      totalAttempts: snipeTransactions.length,
+      totalSuccessful: snipeTransactions.filter(tx => 
+        tx.status === 'completed' || tx.hash
+      ).length
+    };
+
+  } catch (error) {
+    console.log(`Error getting snipe statistics for user ${userId}:`, error);
+    return {
+      todayAttempts: 0,
+      todaySuccessful: 0,
+      successRate: 0,
+      totalAttempts: 0,
+      totalSuccessful: 0
+    };
+  }
+}
+
 // Configure logging
 const logger = winston.createLogger({
   level: 'info',
