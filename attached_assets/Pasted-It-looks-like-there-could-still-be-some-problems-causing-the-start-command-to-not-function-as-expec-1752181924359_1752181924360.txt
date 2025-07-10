@@ -1,0 +1,65 @@
+It looks like there could still be some problems causing the /start command to not function as expected. Here's a checklist of critical areas to verify in your index.js based on the changes you made and common pitfalls:
+
+Logger Functionality: Ensure that the logger is indeed defined at the top and that it's being utilized correctly in the /start command:
+
+bot.start(async (ctx) => {
+  const userId = ctx.from.id.toString();
+  logger.info(`New user started bot: ${userId}`);
+  // Ensure this line is executed without error
+  await showMainMenu(ctx);
+});
+Check for Errors in the Console: Look into the console output to see if any error messages are logged when you send the /start command. If there’s an unhandled promise rejection or an error in showMainMenu, that would prevent the bot from functioning correctly.
+
+File Logging Structure: Ensure that the setupFileLogging() function actually executes during bot initialization to properly manage directory creation and class file logging.
+
+User ID Retrieval: Ensure that the userId isn't encountering issues when the bot retrieves it from ctx.from.id. This might not throw an error but still return an undefined userId, leading to logging failures.
+
+Database Initialization: Confirm that the database initialization was successful by checking the logs from your catch block:
+
+// Initialize database
+try {
+  await initialize();
+  console.log('✅ Database initialized');
+} catch (error) {
+  console.log('⚠️ Database initialization failed:', error.message);
+}
+Command Registration: Make sure that the bot commands are registered correctly:
+
+await bot.telegram.setMyCommands([
+  { command: 'start', description: 'Start the bot' },
+  { command: 'help', description: 'Get help' }
+]);
+If all these areas are confirmed to be working, try deploying your bot again. Here’s the modified part of your index.js for clarity:
+
+// Start command
+bot.start(async (ctx) => {
+   const userId = ctx.from.id.toString();
+   logger.info(`New user started bot: ${userId}`); // Make sure this line logs correctly
+   await showMainMenu(ctx); // Ensure showMainMenu doesn't have hidden errors
+});
+// Ensure this function has proper error handling
+async function showMainMenu(ctx) {
+   const keyboard = [
+     [
+       { text: '○ ETH', callback_data: 'chain_eth' },
+       { text: '○ SOL', callback_data: 'chain_sol' }
+     ],
+     [
+       { text: '○ Statistics', callback_data: 'statistics' },
+       { text: '○ Settings', callback_data: 'settings' }
+     ]
+   ];
+   const message = `❕ WELCOME BACK @ PURITY SNIPER BOT - 1.0 - A Pure Sniping Experience. 
+   You are here: 🕊️HOME
+   www.puritysniperbot.com`;
+   try {
+     await ctx.editMessageText(message, {
+       reply_markup: { inline_keyboard: keyboard },
+       parse_mode: 'Markdown'
+     });
+   } catch (error) {
+     await ctx.reply(message, { reply_markup: { inline_keyboard: keyboard } });
+     logger.error('Failed to edit message text:', error.message);
+   }
+}
+This should help identify the issues preventing the bot from responding to the /start command. After making these adjustments, restart your bot and test again.
