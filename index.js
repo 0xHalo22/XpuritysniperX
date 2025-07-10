@@ -157,18 +157,40 @@ function validateSnipeConfig(config) {
   return errors;
 }
 
-// Enhanced recordTransaction to include snipe tracking
-const originalRecordTransaction = recordTransaction;
-
+// Record transaction function
 async function recordTransaction(userId, transactionData) {
-  // Add snipe-specific metadata
-  if (transactionData.type === 'snipe') {
-    transactionData.autoExecuted = true;
-    transactionData.snipeStrategy = transactionData.strategy || 'unknown';
-    transactionData.snipeAttemptTime = Date.now();
-  }
+  try {
+    // Add snipe-specific metadata
+    if (transactionData.type === 'snipe') {
+      transactionData.autoExecuted = true;
+      transactionData.snipeStrategy = transactionData.strategy || 'unknown';
+      transactionData.snipeAttemptTime = Date.now();
+    }
 
-  return await originalRecordTransaction(userId, transactionData);
+    // Add transaction to database
+    await addTransaction(userId, transactionData);
+    
+    // Also update user data with transaction
+    const userData = await loadUserData(userId);
+    if (!userData.transactions) {
+      userData.transactions = [];
+    }
+    userData.transactions.push(transactionData);
+    
+    // Keep only last 100 transactions to prevent bloat
+    if (userData.transactions.length > 100) {
+      userData.transactions = userData.transactions.slice(-100);
+    }
+    
+    await saveUserData(userId, userData);
+    
+    console.log(`✅ Transaction recorded for user ${userId}: ${transactionData.type}`);
+    return transactionData;
+    
+  } catch (error) {
+    console.log(`❌ Error recording transaction for user ${userId}:`, error.message);
+    throw error;
+  }
 }
 
 // Cleanup function for snipe monitors (called on bot shutdown)
