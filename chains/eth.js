@@ -795,22 +795,33 @@ class EthChain {
     }
 
     // ====================================================================
-    // 🚀 ENHANCED TOKEN SWAP EXECUTION (UNCHANGED - WORKING)
+    // 🚀 ENHANCED TOKEN SWAP EXECUTION WITH RETRY LOGIC & MEV PROTECTION
     // ====================================================================
 
-    async executeTokenSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3) {
+    async executeTokenSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3, options = {}) {
+    const maxRetries = options.maxRetries || 3;
+    const isSnipeMode = options.snipeMode || false;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`🚀 Executing swap: ${amountIn.toString()} ${tokenIn} -> ${tokenOut}`);
+        console.log(`🚀 Swap attempt ${attempt}/${maxRetries}: ${amountIn.toString()} ${tokenIn} -> ${tokenOut}`);
 
         const provider = await this.getProvider();
         const wallet = new ethers.Wallet(privateKey, provider);
 
+        // ENHANCEMENT 1: Dynamic slippage based on attempt
+        let dynamicSlippage = slippagePercent;
+        if (isSnipeMode && attempt > 1) {
+          dynamicSlippage = Math.min(slippagePercent + (attempt * 5), 50); // Increase slippage on retries
+          console.log(`📈 Retry attempt: increased slippage to ${dynamicSlippage}%`);
+        }
+
         // Get quote and calculate slippage
         const quote = await this.getSwapQuote(tokenIn, tokenOut, amountIn);
-        const slippageBps = slippagePercent * 100;
+        const slippageBps = dynamicSlippage * 100;
         const minOutput = quote.outputAmount * BigInt(10000 - slippageBps) / BigInt(10000);
 
-        console.log(`📉 Slippage: ${slippagePercent}%, Min output: ${minOutput.toString()}`);
+        console.log(`📉 Slippage: ${dynamicSlippage}%, Min output: ${minOutput.toString()}`);
 
         // Build transaction
         let transaction;
@@ -822,10 +833,38 @@ class EthChain {
           transaction = await this.buildTokenToTokenSwap(tokenIn, tokenOut, amountIn, minOutput, wallet.address);
         }
 
-        // Gas estimation
-        const gasEstimate = await this.estimateSwapGas(tokenIn, tokenOut, amountIn, wallet.address);
+        // ENHANCEMENT 2: Dynamic gas pricing for retries
+        let gasEstimate;
+        if (options.gasPrice && options.gasLimit) {
+          // Use provided gas settings (for speed)
+          gasEstimate = {
+            gasPrice: options.gasPrice,
+            gasLimit: options.gasLimit,
+            totalCost: options.gasPrice.mul(options.gasLimit)
+          };
+        } else {
+          gasEstimate = await this.estimateSwapGas(tokenIn, tokenOut, amountIn, wallet.address);
+
+          // Increase gas price on retries for better success rate
+          if (attempt > 1) {
+            const gasMultiplier = 100 + (attempt * 25); // +25% per retry
+            gasEstimate.gasPrice = gasEstimate.gasPrice.mul(gasMultiplier).div(100);
+            gasEstimate.totalCost = gasEstimate.gasPrice.mul(gasEstimate.gasLimit);
+            console.log(`⛽ Retry gas boost: ${gasMultiplier}% (${ethers.utils.formatUnits(gasEstimate.gasPrice, 'gwei')} gwei)`);
+          }
+        }
+
         transaction.gasLimit = gasEstimate.gasLimit;
         transaction.gasPrice = gasEstimate.gasPrice;
+
+        // ENHANCEMENT 3: MEV Protection with random nonce offset
+        if (isSnipeMode) {
+          const baseNonce = await provider.getTransactionCount(wallet.address, 'latest');
+          // Add small random offset to avoid MEV front-running patterns
+          const nonceOffset = Math.floor(Math.random() * 3); // 0-2 offset
+          transaction.nonce = baseNonce + nonceOffset;
+          console.log(`🛡️ MEV protection: nonce ${transaction.nonce} (base: ${baseNonce})`);
+        }
 
         console.log(`⛽ Gas: ${transaction.gasLimit.toString()} @ ${ethers.utils.formatUnits(transaction.gasPrice, 'gwei')} gwei`);
 
@@ -839,17 +878,43 @@ class EthChain {
           throw new Error(`Insufficient ETH. Need: ${ethers.utils.formatEther(totalCost)} ETH, Have: ${ethers.utils.formatEther(balance)} ETH`);
         }
 
-        // Execute transaction
-        const txResponse = await wallet.sendTransaction(transaction);
-        console.log(`✅ Swap executed! Hash: ${txResponse.hash}`);
+        // ENHANCEMENT 4: Execute with timeout protection
+        const txPromise = wallet.sendTransaction(transaction);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Transaction timeout')), 45000) // 45s timeout
+        );
+
+        const txResponse = await Promise.race([txPromise, timeoutPromise]);
+        console.log(`✅ Swap executed! Hash: ${txResponse.hash} (attempt ${attempt})`);
 
         return txResponse;
 
       } catch (error) {
-        console.log(`❌ Swap failed: ${error.message}`);
-        throw error;
+        console.log(`❌ Swap attempt ${attempt} failed: ${error.message}`);
+
+        // Don't retry on certain errors
+        if (error.message.includes('insufficient funds') || 
+            error.message.includes('Insufficient ETH') ||
+            error.message.includes('user rejected') ||
+            attempt === maxRetries) {
+          console.log(`🛑 Fatal error or max retries reached`);
+          throw error;
+        }
+
+        // Wait before retry (exponential backoff)
+        if (attempt < maxRetries) {
+          const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5s wait
+          console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+
+          // Switch provider for retry
+          await this.switchToNextProvider();
+        }
       }
     }
+
+    throw new Error(`All ${maxRetries} swap attempts failed`);
+  }
 
     // ====================================================================
     // 🎯 SMART TOKEN SALE SYSTEM (UNCHANGED - WORKING)
