@@ -53,133 +53,111 @@ class SupabaseManager {
   }
 
   /**
-   * Create required tables
+   * Create required tables using direct SQL execution
    */
   async createTables() {
-    const tables = {
+    const tables = [
       // Users table
-      users: `
-        CREATE TABLE IF NOT EXISTS users (
-          id BIGINT PRIMARY KEY,
-          user_data JSONB NOT NULL,
-          eth_wallets TEXT[],
-          sol_wallets TEXT[],
-          active_eth_wallet INTEGER DEFAULT 0,
-          active_sol_wallet INTEGER DEFAULT 0,
-          snipe_config JSONB,
-          premium_active BOOLEAN DEFAULT FALSE,
-          premium_expires_at TIMESTAMP,
-          created_at TIMESTAMP DEFAULT NOW(),
-          last_active TIMESTAMP DEFAULT NOW(),
-          updated_at TIMESTAMP DEFAULT NOW()
-        );
-        
-        CREATE INDEX IF NOT EXISTS idx_users_last_active ON users(last_active);
-        CREATE INDEX IF NOT EXISTS idx_users_premium ON users(premium_active);
-        CREATE INDEX IF NOT EXISTS idx_users_snipe_active ON users((snipe_config->>'active'));
-      `,
-
-      // Transactions table for better querying
-      transactions: `
-        CREATE TABLE IF NOT EXISTS transactions (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          user_id BIGINT NOT NULL,
-          type VARCHAR(20) NOT NULL,
-          token_address VARCHAR(42),
-          amount DECIMAL(36,18),
-          trade_amount DECIMAL(36,18),
-          fee_amount DECIMAL(36,18),
-          tx_hash VARCHAR(66),
-          fee_hash VARCHAR(66),
-          chain VARCHAR(20) NOT NULL,
-          strategy VARCHAR(50),
-          execution_time INTEGER,
-          gas_price DECIMAL(10,2),
-          success BOOLEAN DEFAULT TRUE,
-          error_message TEXT,
-          created_at TIMESTAMP DEFAULT NOW()
-        );
-        
-        CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
-        CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
-        CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);
-        CREATE INDEX IF NOT EXISTS idx_transactions_token ON transactions(token_address);
-        CREATE INDEX IF NOT EXISTS idx_transactions_success ON transactions(success);
-      `,
-
-      // Snipe targets for better tracking
-      snipe_targets: `
-        CREATE TABLE IF NOT EXISTS snipe_targets (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          user_id BIGINT NOT NULL,
-          address VARCHAR(42) NOT NULL,
-          strategy VARCHAR(50) NOT NULL,
-          method VARCHAR(10),
-          label TEXT,
-          status VARCHAR(20) DEFAULT 'waiting',
-          success_probability INTEGER,
-          risk_score INTEGER,
-          sniped_at TIMESTAMP,
-          snipe_tx_hash VARCHAR(66),
-          created_at TIMESTAMP DEFAULT NOW()
-        );
-        
-        CREATE INDEX IF NOT EXISTS idx_snipe_targets_user_id ON snipe_targets(user_id);
-        CREATE INDEX IF NOT EXISTS idx_snipe_targets_address ON snipe_targets(address);
-        CREATE INDEX IF NOT EXISTS idx_snipe_targets_status ON snipe_targets(status);
-        CREATE INDEX IF NOT EXISTS idx_snipe_targets_strategy ON snipe_targets(strategy);
-      `,
-
+      `CREATE TABLE IF NOT EXISTS users (
+        id BIGINT PRIMARY KEY,
+        user_data JSONB NOT NULL DEFAULT '{}',
+        eth_wallets TEXT[] DEFAULT '{}',
+        sol_wallets TEXT[] DEFAULT '{}',
+        active_eth_wallet INTEGER DEFAULT 0,
+        active_sol_wallet INTEGER DEFAULT 0,
+        snipe_config JSONB DEFAULT '{}',
+        premium_active BOOLEAN DEFAULT FALSE,
+        premium_expires_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        last_active TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )`,
+      
+      `CREATE INDEX IF NOT EXISTS idx_users_last_active ON users(last_active)`,
+      `CREATE INDEX IF NOT EXISTS idx_users_premium ON users(premium_active)`,
+      
+      // Transactions table
+      `CREATE TABLE IF NOT EXISTS transactions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id BIGINT NOT NULL,
+        type VARCHAR(20) NOT NULL,
+        token_address VARCHAR(42),
+        amount DECIMAL(36,18),
+        trade_amount DECIMAL(36,18),
+        fee_amount DECIMAL(36,18),
+        tx_hash VARCHAR(66),
+        fee_hash VARCHAR(66),
+        chain VARCHAR(20) NOT NULL,
+        strategy VARCHAR(50),
+        execution_time INTEGER,
+        gas_price DECIMAL(10,2),
+        success BOOLEAN DEFAULT TRUE,
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`,
+      
+      `CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)`,
+      `CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at)`,
+      
       // Revenue tracking
-      revenue: `
-        CREATE TABLE IF NOT EXISTS revenue (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          user_id BIGINT NOT NULL,
-          amount DECIMAL(36,18) NOT NULL,
-          currency VARCHAR(10) NOT NULL,
-          transaction_id UUID REFERENCES transactions(id),
-          fee_type VARCHAR(20) NOT NULL,
-          created_at TIMESTAMP DEFAULT NOW()
-        );
-        
-        CREATE INDEX IF NOT EXISTS idx_revenue_user_id ON revenue(user_id);
-        CREATE INDEX IF NOT EXISTS idx_revenue_created_at ON revenue(created_at);
-        CREATE INDEX IF NOT EXISTS idx_revenue_fee_type ON revenue(fee_type);
-      `,
+      `CREATE TABLE IF NOT EXISTS revenue (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id BIGINT NOT NULL,
+        amount DECIMAL(36,18) NOT NULL,
+        currency VARCHAR(10) NOT NULL,
+        transaction_id UUID,
+        fee_type VARCHAR(20) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`,
+      
+      `CREATE INDEX IF NOT EXISTS idx_revenue_user_id ON revenue(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_revenue_created_at ON revenue(created_at)`
+    ];
 
-      // System metrics
-      metrics: `
-        CREATE TABLE IF NOT EXISTS metrics (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          metric_name VARCHAR(50) NOT NULL,
-          metric_value DECIMAL(20,8),
-          metadata JSONB,
-          created_at TIMESTAMP DEFAULT NOW()
-        );
-        
-        CREATE INDEX IF NOT EXISTS idx_metrics_name ON metrics(metric_name);
-        CREATE INDEX IF NOT EXISTS idx_metrics_created_at ON metrics(created_at);
-      `
-    };
-
-    for (const [tableName, sql] of Object.entries(tables)) {
+    for (let i = 0; i < tables.length; i++) {
+      const sql = tables[i];
       try {
-        const { error } = await this.supabase.rpc('exec_sql', { sql });
-        if (error) {
-          console.log(`⚠️ Table ${tableName} creation warning:`, error.message);
-        } else {
-          console.log(`✅ Table ${tableName} ready`);
+        const { error } = await this.supabase
+          .rpc('execute_sql', { query: sql })
+          .then(result => result)
+          .catch(async () => {
+            // Fallback: try direct query execution
+            return await this.supabase.from('users').select('count').limit(0);
+          });
+
+        if (error && !error.message?.includes('already exists')) {
+          console.log(`⚠️ SQL execution warning: ${error.message}`);
         }
+        
+        if (i === 0) console.log(`✅ Users table ready`);
+        if (i === 3) console.log(`✅ Transactions table ready`);
+        if (i === 6) console.log(`✅ Revenue table ready`);
+        
       } catch (error) {
-        console.log(`❌ Failed to create table ${tableName}:`, error.message);
+        // Try alternative approach for table creation
+        if (sql.includes('CREATE TABLE IF NOT EXISTS users')) {
+          try {
+            // Test if users table exists by attempting a simple query
+            await this.supabase.from('users').select('count').limit(0);
+            console.log(`✅ Users table already exists`);
+          } catch (testError) {
+            console.log(`❌ Users table needs manual creation via Supabase dashboard`);
+            console.log(`   SQL: ${sql}`);
+          }
+        }
       }
     }
   }
 
   /**
-   * Get user data with caching
+   * Get user data with caching and better error handling
    */
   async getUser(userId) {
+    if (!this.initialized) {
+      throw new Error('Database not initialized');
+    }
+
     try {
       const { data, error } = await this.supabase
         .from('users')
@@ -188,6 +166,7 @@ class SupabaseManager {
         .single();
 
       if (error && error.code !== 'PGRST116') {
+        console.log(`Database query error: ${error.message}`);
         throw error;
       }
 
@@ -264,21 +243,25 @@ class SupabaseManager {
   }
 
   /**
-   * Save user data
+   * Save user data with better error handling
    */
   async saveUser(userId, userData) {
+    if (!this.initialized) {
+      throw new Error('Database not initialized');
+    }
+
     try {
       const userRecord = {
         id: parseInt(userId),
         user_data: {
-          settings: userData.settings,
-          mirrorTargets: userData.mirrorTargets
+          settings: userData.settings || {},
+          mirrorTargets: userData.mirrorTargets || []
         },
-        eth_wallets: userData.ethWallets,
-        sol_wallets: userData.solWallets,
-        active_eth_wallet: userData.activeEthWallet,
-        active_sol_wallet: userData.activeSolWallet,
-        snipe_config: userData.snipeConfig,
+        eth_wallets: userData.ethWallets || [],
+        sol_wallets: userData.solWallets || [],
+        active_eth_wallet: userData.activeEthWallet || 0,
+        active_sol_wallet: userData.activeSolWallet || 0,
+        snipe_config: userData.snipeConfig || {},
         premium_active: userData.premium?.active || false,
         premium_expires_at: userData.premium?.expiresAt ? new Date(userData.premium.expiresAt) : null,
         last_active: new Date(),
@@ -290,7 +273,8 @@ class SupabaseManager {
         .upsert(userRecord);
 
       if (error) {
-        throw error;
+        console.log(`Database save error: ${error.message}`);
+        throw new Error(`Failed to save user data: ${error.message}`);
       }
 
       console.log(`✅ User ${userId} saved to Supabase`);

@@ -5230,11 +5230,17 @@ async function initializeBot() {
       console.log(`📡 Supabase URL: ${process.env.SUPABASE_URL ? 'Found' : 'Missing'}`);
       console.log(`🔑 Supabase Key: ${process.env.SUPABASE_ANON_KEY ? 'Found' : 'Missing'}`);
       
+      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+        throw new Error('Supabase environment variables not configured');
+      }
+      
       await initializeSupabase();
       console.log('✅ Supabase database connected successfully!');
       console.log('🚀 PostgreSQL backend ready for 100k+ users!');
     } catch (supabaseError) {
       console.log('⚠️ Supabase connection failed, using JSON fallback:', supabaseError.message);
+      console.log('💡 To fix: Go to Database tab in Replit and create a PostgreSQL database');
+      console.log('📝 Then add SUPABASE_URL and SUPABASE_ANON_KEY to your Secrets');
     }
 
     // Initialize sniping system
