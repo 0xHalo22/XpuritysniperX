@@ -1015,6 +1015,122 @@ Please send a valid token amount (e.g., 1000)`,
 }
 
 // ====================================================================
+// SOL SNIPE AND MIRROR CONFIGURATION FUNCTIONS
+// ====================================================================
+
+// Show SOL Snipe Configuration
+async function showSolSnipeConfiguration(ctx, userData) {
+  const snipeConfig = userData.snipeConfig || defaultSnipeConfig;
+  const stats = await getSnipeStatistics(ctx.from.id.toString());
+
+  const keyboard = [
+    [
+      { text: snipeConfig.active ? '🟢 Active' : '🔴 Inactive', callback_data: 'sol_snipe_toggle' },
+      { text: '⚙️ Configure', callback_data: 'sol_snipe_configure' }
+    ],
+    [
+      { text: '🎯 Add Target', callback_data: 'sol_snipe_add_target' },
+      { text: '📊 View Targets', callback_data: 'sol_snipe_view_targets' }
+    ],
+    [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+  ];
+
+  await ctx.editMessageText(
+    `🎯 **SOL SNIPE CONFIGURATION**
+
+**Status:** ${snipeConfig.active ? '🟢 Active' : '🔴 Inactive'}
+**Strategy:** ${getStrategyDisplayName(snipeConfig.strategy)}
+**Amount:** ${snipeConfig.amount} SOL per snipe
+**Max Fee:** ${snipeConfig.maxGasPrice} lamports
+
+**Statistics (24h):**
+📈 Attempts: ${stats.todayAttempts}
+✅ Successful: ${stats.todaySuccessful}
+📊 Success Rate: ${stats.successRate}%
+
+**Target Tokens:** ${snipeConfig.targetTokens?.length || 0}`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+}
+
+// Show SOL Mirror Configuration
+async function showSolMirrorConfiguration(ctx, userData) {
+  const mirrorTargets = userData.mirrorTargets || [];
+
+  const keyboard = [
+    [
+      { text: '➕ Add Wallet', callback_data: 'sol_mirror_add_wallet' },
+      { text: '📊 View Targets', callback_data: 'sol_mirror_view_targets' }
+    ],
+    [
+      { text: '⚙️ Settings', callback_data: 'sol_mirror_settings' },
+      { text: '📈 Statistics', callback_data: 'sol_mirror_stats' }
+    ],
+    [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+  ];
+
+  await ctx.editMessageText(
+    `🪞 **SOL MIRROR TRADING**
+
+Monitor and copy trades from successful Solana wallets.
+
+**Active Mirrors:** ${mirrorTargets.length}
+**Status:** ${mirrorTargets.length > 0 ? '🟢 Active' : '🔴 Inactive'}
+
+**How it works:**
+• Add SOL wallet addresses to monitor
+• Bot copies their trades automatically
+• Set copy percentage and filters
+• Follow Jupiter aggregator trades`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+}
+
+// SOL Snipe placeholder handlers
+bot.action('sol_snipe_toggle', async (ctx) => {
+  await ctx.answerCbQuery('🚧 SOL sniping features coming soon!');
+});
+
+bot.action('sol_snipe_configure', async (ctx) => {
+  await ctx.answerCbQuery('🚧 SOL snipe configuration coming soon!');
+});
+
+bot.action('sol_snipe_add_target', async (ctx) => {
+  await ctx.answerCbQuery('🚧 Add SOL snipe targets coming soon!');
+});
+
+bot.action('sol_snipe_view_targets', async (ctx) => {
+  await ctx.answerCbQuery('🚧 View SOL snipe targets coming soon!');
+});
+
+// SOL Mirror placeholder handlers
+bot.action('sol_mirror_add_wallet', async (ctx) => {
+  await ctx.answerCbQuery('🚧 SOL mirror trading coming soon!');
+});
+
+bot.action('sol_mirror_view_targets', async (ctx) => {
+  await ctx.answerCbQuery('🚧 View SOL mirror targets coming soon!');
+});
+
+bot.action('sol_mirror_settings', async (ctx) => {
+  await ctx.answerCbQuery('🚧 SOL mirror settings coming soon!');
+});
+
+bot.action('sol_mirror_stats', async (ctx) => {
+  await ctx.answerCbQuery('🚧 SOL mirror statistics coming soon!');
+});
+
+// ====================================================================
+// MISSING SOL BUY/SELL CALLBACK HANDLERS - CRITICAL FOR SOL OPERATION
+// ====================================================================
+
+// ====================================================================
 // ERROR HANDLING & CLEANUP
 // ====================================================================
 
