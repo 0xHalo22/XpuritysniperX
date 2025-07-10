@@ -815,8 +815,7 @@ class EthChain {
     console.log(`🛡️ Phase 3: Conducting comprehensive risk analysis...`);
 
     try {
-      const provider = await```tool_code
- this.getProvider();
+      const provider = await this.getProvider();
 
       // Step 1: Analyze token safety (if not ETH/WETH)
       let tokenSafetyAnalysis = null;
@@ -1052,22 +1051,22 @@ class EthChain {
     async executeTokenSwapWithApproval(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3, options = {}) {
       try {
         console.log(`🚀 Executing Token Swap With Approval: ${amountIn.toString()} ${tokenIn} -> ${tokenOut}`);
-    
+
         const provider = await this.getProvider();
         const wallet = new ethers.Wallet(privateKey, provider);
-    
+
         // Step 1: Approve token (if needed)
         if (tokenIn !== this.tokens.WETH && tokenIn !== this.contracts.WETH) {
           console.log(`🔑 Approving token ${tokenIn} for swap...`);
           await this.smartApproveToken(tokenIn, this.contracts.UNISWAP_V2_ROUTER, amountIn, privateKey);
         }
-    
+
         // Step 2: Execute the token swap
         console.log(`🔄 Executing token swap after approval...`);
         const swapResult = await this.executeTokenSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent, options);
-    
+
         return swapResult;
-    
+
       } catch (error) {
         console.log(`❌ Token swap with approval failed: ${error.message}`);
         throw error;
