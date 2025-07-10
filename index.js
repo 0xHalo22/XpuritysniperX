@@ -13,7 +13,7 @@ const ethers = require('ethers');
 const WalletManager = require('./wallets/manager');
 const EthChain = require('./chains/eth');
 const { checkRateLimit, updateRateLimit } = require('./utils/rateLimit');
-const { initialize: initializeSupabase, getUser, saveUser, addTransaction, getUserTransactions } = require('./utils/database');
+const { initialize, getUser, saveUser, addTransaction, getUserTransactions } = require('./utils/database');
 
 // ====================================================================
 // INITIALIZATION
@@ -287,16 +287,16 @@ const logger = winston.createLogger({
 
 async function loadUserData(userId) {
   try {
-    // Try Supabase first
+    // Try Replit Database first
     const userData = await getUser(userId);
     
-    // Load recent transactions from Supabase
+    // Load recent transactions from Replit Database
     const transactions = await getUserTransactions(userId, 50);
     userData.transactions = transactions;
     
     return userData;
   } catch (error) {
-    console.log(`Error loading user data from Supabase: ${error.message}`);
+    console.log(`Error loading user data from Replit Database: ${error.message}`);
     
     // Fallback to JSON file
     try {
@@ -323,7 +323,17 @@ async function loadUserData(userId) {
           expiresAt: 0
         },
         createdAt: Date.now(),
-        lastActive: Date.now()
+        lastActive: Date.now(),
+        snipeConfig: {
+          active: false,
+          amount: 0.1,
+          slippage: 10,
+          strategy: 'first_liquidity',
+          maxGasPrice: 100,
+          minLiquidity: 1000,
+          maxPerHour: 5,
+          targetTokens: []
+        }
       };
     }
   }
@@ -334,7 +344,7 @@ async function saveUserData(userId, userData) {
     // Update last active timestamp
     userData.lastActive = Date.now();
 
-    // Save to Supabase
+    // Save to Replit Database
     await saveUser(userId, userData);
 
     // Also save to JSON as backup
@@ -508,7 +518,7 @@ Choose your action:`,
 // Helper function to record transaction
 async function recordTransaction(userId, transactionData) {
   try {
-    // Save to Supabase
+    // Save to Replit Database
     await addTransaction(userId, transactionData);
 
     // Also update user data (for in-memory transactions array)
@@ -5224,23 +5234,15 @@ async function initializeBot() {
 
     logger.info('Bot directories initialized');
 
-    // Initialize Supabase
+    // Initialize Replit Database
     try {
-      console.log('🔄 Connecting to Supabase database...');
-      console.log(`📡 Supabase URL: ${process.env.SUPABASE_URL ? 'Found' : 'Missing'}`);
-      console.log(`🔑 Supabase Key: ${process.env.SUPABASE_ANON_KEY ? 'Found' : 'Missing'}`);
-      
-      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-        throw new Error('Supabase environment variables not configured');
-      }
-      
-      await initializeSupabase();
-      console.log('✅ Supabase database connected successfully!');
-      console.log('🚀 PostgreSQL backend ready for 100k+ users!');
-    } catch (supabaseError) {
-      console.log('⚠️ Supabase connection failed, using JSON fallback:', supabaseError.message);
-      console.log('💡 To fix: Go to Database tab in Replit and create a PostgreSQL database');
-      console.log('📝 Then add SUPABASE_URL and SUPABASE_ANON_KEY to your Secrets');
+      console.log('🔄 Connecting to Replit Database...');
+      await initialize();
+      console.log('✅ Replit Database connected successfully!');
+      console.log('🚀 Key-value database ready for your bot!');
+    } catch (databaseError) {
+      console.log('⚠️ Replit Database connection failed:', databaseError.message);
+      console.log('💡 Replit Database should work automatically in this environment');
     }
 
     // Initialize sniping system
