@@ -511,6 +511,261 @@ Choose your action:`,
   );
 }
 
+// SOL Wallet Handler
+bot.action('sol_wallet', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const userData = await loadUserData(userId);
+
+  if (!userData.solWallets || userData.solWallets.length === 0) {
+    await showSolWalletSetup(ctx);
+  } else {
+    await showSolWalletManagement(ctx, userData);
+  }
+});
+
+async function showSolWalletSetup(ctx) {
+  const keyboard = [
+    [{ text: '➕ Import SOL Wallet', callback_data: 'import_sol_wallet' }],
+    [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+  ];
+
+  await ctx.editMessageText(
+    `🟣 **SOL WALLET SETUP**
+
+No SOL wallets found. Import your private key to get started.
+
+⚠️ Your private key will be encrypted and stored securely.
+🔐 We never store plaintext keys.`,
+    { reply_markup: { inline_keyboard: keyboard } }
+  );
+}
+
+async function showSolWalletManagement(ctx, userData) {
+  const userId = ctx.from.id.toString();
+
+  try {
+    // For now, show basic info since SOL integration needs the SolChain class
+    const keyboard = [
+      [{ text: '💰 View Balance', callback_data: 'sol_view_balance' }],
+      [{ text: '📊 Transaction History', callback_data: 'sol_tx_history' }],
+      [{ text: '➕ Add Wallet', callback_data: 'import_sol_wallet' }]
+    ];
+
+    keyboard.push([{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]);
+
+    await ctx.editMessageText(
+      `🟣 **SOL WALLET**
+
+**SOL Wallet Management**
+Feature coming soon - SOL integration in development.
+
+For now, focus on ETH trading while we complete SOL implementation.`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error loading SOL wallet management:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading SOL wallet**
+
+${error.message}
+
+Please try again or use ETH trading for now.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// SOL Buy Handler
+bot.action('sol_buy', async (ctx) => {
+  await ctx.editMessageText(
+    `🟣 **SOL BUY TOKEN**
+
+SOL token trading is currently in development.
+
+Use ETH trading for now - it's fully functional with:
+• Real-time token purchases
+• Automatic fee collection
+• Uniswap integration
+• Secure wallet management
+
+SOL integration coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔗 Switch to ETH Trading', callback_data: 'chain_eth' }],
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// SOL Sell Handler
+bot.action('sol_sell', async (ctx) => {
+  await ctx.editMessageText(
+    `🟣 **SOL SELL TOKEN**
+
+SOL token trading is currently in development.
+
+Use ETH trading for now - it's fully functional with:
+• Token balance detection
+• Percentage-based selling
+• Automatic approvals
+• Fee collection
+
+SOL integration coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔗 Switch to ETH Trading', callback_data: 'chain_eth' }],
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// SOL Snipe Handler
+bot.action('sol_snipe', async (ctx) => {
+  await ctx.editMessageText(
+    `🟣 **SOL SNIPE TOKEN**
+
+SOL sniping is currently in development.
+
+Use ETH sniping for now - it's fully functional with:
+• Real-time new pair monitoring
+• Targeted liquidity sniping
+• Contract method monitoring
+• Automated execution
+
+SOL sniping coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🎯 Try ETH Sniping', callback_data: 'eth_snipe' }],
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// SOL Mirror Handler
+bot.action('sol_mirror', async (ctx) => {
+  await ctx.editMessageText(
+    `🟣 **SOL MIRROR WALLET**
+
+SOL mirror trading is currently in development.
+
+This feature will allow you to:
+• Mirror successful SOL traders
+• Copy their transactions automatically
+• Set custom amounts and limits
+• Real-time trade replication
+
+SOL mirror trading coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// Import SOL Wallet Handler
+bot.action('import_sol_wallet', async (ctx) => {
+  await ctx.editMessageText(
+    `🟣 **IMPORT SOL WALLET**
+
+SOL wallet import is currently in development.
+
+For now, use ETH wallet functionality which is fully operational:
+• Secure private key encryption
+• Multiple wallet support
+• Real-time balance checking
+• Transaction history
+
+SOL wallet support coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔗 Import ETH Wallet', callback_data: 'import_eth_wallet' }],
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// SOL Balance Handler
+bot.action('sol_view_balance', async (ctx) => {
+  await ctx.editMessageText(
+    `🟣 **SOL BALANCE**
+
+SOL balance checking is currently in development.
+
+Use ETH balance checking for now - it's fully functional and shows:
+• Real-time ETH balance
+• Wallet address display
+• Last updated timestamp
+• Refresh capability
+
+SOL balance coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔗 Check ETH Balance', callback_data: 'eth_view_balance' }],
+          [{ text: '🔙 Back to SOL Wallet', callback_data: 'sol_wallet' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// SOL Transaction History Handler
+bot.action('sol_tx_history', async (ctx) => {
+  await ctx.editMessageText(
+    `🟣 **SOL TRANSACTION HISTORY**
+
+SOL transaction history is currently in development.
+
+Use ETH transaction history for now - it's fully functional with:
+• Recent transaction display
+• Transaction links to Etherscan
+• Buy/sell transaction details
+• Timestamp information
+
+SOL transaction history coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔗 View ETH History', callback_data: 'eth_tx_history' }],
+          [{ text: '🔙 Back to SOL Wallet', callback_data: 'sol_wallet' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
 // ====================================================================
 // UTILITY FUNCTIONS
 // ====================================================================
