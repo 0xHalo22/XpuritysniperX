@@ -787,30 +787,30 @@ class RiskAnalysisEngine {
   applyMEVProtection(transactionParams) {
     console.log(`🛡️ Applying MEV protection`);
 
-    const protected = { ...transactionParams };
+    const protectedParams = { ...transactionParams };
 
     if (this.mevProtection.enabled) {
       // Add random delay to execution (in practice, this would be handled by the caller)
-      protected.mevDelay = Math.floor(Math.random() * this.mevProtection.maxFrontRunDelay);
+      protectedParams.mevDelay = Math.floor(Math.random() * this.mevProtection.maxFrontRunDelay);
 
       // Randomize nonce if enabled
-      if (this.mevProtection.nonceRandomization && !protected.nonce) {
-        protected.nonceOffset = Math.floor(Math.random() * 3); // 0-2 offset
+      if (this.mevProtection.nonceRandomization && !protectedParams.nonce) {
+        protectedParams.nonceOffset = Math.floor(Math.random() * 3); // 0-2 offset
       }
 
       // Adjust gas price for better protection
-      if (protected.gasPrice) {
-        const currentGwei = parseFloat(ethers.utils.formatUnits(protected.gasPrice, 'gwei'));
+      if (protectedParams.gasPrice) {
+        const currentGwei = parseFloat(ethers.utils.formatUnits(protectedParams.gasPrice, 'gwei'));
         if (currentGwei < this.mevProtection.minGasPrice) {
-          protected.gasPrice = ethers.utils.parseUnits(this.mevProtection.minGasPrice.toString(), 'gwei');
+          protectedParams.gasPrice = ethers.utils.parseUnits(this.mevProtection.minGasPrice.toString(), 'gwei');
           console.log(`🔧 Increased gas price to ${this.mevProtection.minGasPrice} gwei for MEV protection`);
         }
       }
 
-      console.log(`✅ MEV protection applied: ${protected.mevDelay}ms delay, nonce offset: ${protected.nonceOffset || 0}`);
+      console.log(`✅ MEV protection applied: ${protectedParams.mevDelay}ms delay, nonce offset: ${protectedParams.nonceOffset || 0}`);
     }
 
-    return protected;
+    return protectedParams;
   }
 
   // ====================================================================

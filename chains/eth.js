@@ -285,10 +285,10 @@ class EthChain {
   /**
    * 🧮 Enhanced fee calculation with precision handling
    * @param {string|number} amount - Trading amount in ETH
-   * @param {number} feePercentage - Fee percentage (default 1.0%)
+   * @param {number} feePercentage - Fee percentage (default 1.5%)
    * @returns {object} - Detailed fee breakdown
    */
-  calculateFeeBreakdown(amount, feePercentage = 1.0) {
+  calculateFeeBreakdown(amount, feePercentage = 1.5) {
     try {
       console.log(`🧮 Calculating fee breakdown: ${amount} ETH @ ${feePercentage}%`);
 
