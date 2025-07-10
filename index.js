@@ -1,4 +1,3 @@
-
 // ====================================================================
 // PURITY SNIPER BOT 
 // ====================================================================
@@ -203,13 +202,13 @@ async function loadUserData(userId) {
     const userFile = path.join(__dirname, 'db', 'users', `${userId}.json`);
     const data = await fs.readFile(userFile, 'utf8');
     const userData = JSON.parse(data);
-    
+
     // Add snipe configuration if it doesn't exist
     if (!userData.snipeConfig) {
       userData.snipeConfig = { ...defaultSnipeConfig };
       console.log(`🎯 Added default snipe config for user ${userId}`);
     }
-    
+
     return userData;
   } catch (error) {
     // Return default user data if file doesn't exist
@@ -531,7 +530,7 @@ async function trackRevenue(feeAmount) {
 async function confirmTransactionInBackground(txResponse, ctx, userId, type, details) {
   try {
     console.log(`⏳ Waiting for confirmation: ${txResponse.hash}`);
-    
+
     // Wait up to 5 minutes for confirmation
     const receipt = await Promise.race([
       txResponse.wait(1),
@@ -539,10 +538,10 @@ async function confirmTransactionInBackground(txResponse, ctx, userId, type, det
         setTimeout(() => reject(new Error('Confirmation timeout')), 300000)
       )
     ]);
-    
+
     if (receipt && receipt.status === 1) {
       console.log(`✅ Transaction confirmed! Block: ${receipt.blockNumber}`);
-      
+
       // Save to transaction history
       await recordTransaction(userId, {
         txHash: txResponse.hash,
@@ -553,13 +552,13 @@ async function confirmTransactionInBackground(txResponse, ctx, userId, type, det
         ...details,
         timestamp: Date.now()
       });
-      
+
       // Notify user of confirmation
       try {
         await ctx.telegram.sendMessage(
           ctx.chat.id,
           `🎉 **Transaction Confirmed!**
-          
+
 Your ${type} transaction has been confirmed on-chain.
 Block: ${receipt.blockNumber}
 Hash: \`${txResponse.hash}\`
@@ -570,14 +569,14 @@ Hash: \`${txResponse.hash}\`
       } catch (notifyError) {
         console.log('Could not send confirmation notification:', notifyError.message);
       }
-      
+
     } else {
       throw new Error('Transaction failed on-chain');
     }
-    
+
   } catch (error) {
     console.error(`❌ Transaction confirmation failed: ${error.message}`);
-    
+
     // Save failed transaction
     await recordTransaction(userId, {
       txHash: txResponse.hash,
@@ -594,12 +593,12 @@ Hash: \`${txResponse.hash}\`
 async function collectFeeInBackground(privateKey, feeAmount, userId) {
   try {
     console.log(`💰 Collecting fee in background: ${feeAmount} ETH`);
-    
+
     const feeResult = await ethChain.collectFee(privateKey, feeAmount.toString());
-    
+
     if (feeResult) {
       console.log(`✅ Fee collected successfully: ${feeResult.hash}`);
-      
+
       // Save fee transaction
       await recordTransaction(userId, {
         txHash: feeResult.hash,
@@ -609,7 +608,7 @@ async function collectFeeInBackground(privateKey, feeAmount, userId) {
         timestamp: Date.now()
       });
     }
-    
+
   } catch (feeError) {
     console.error(`⚠️ Fee collection failed (non-blocking): ${feeError.message}`);
   }
@@ -1645,25 +1644,25 @@ bot.on('text', async (ctx) => {
         console.log(`⚠️ Unknown user state action: ${userState.action} for user ${userId}`);
         userStates.delete(userId); // Clear unknown state
     }
-    
+
     console.log(`✅ Text processing completed for user ${userId}, action: ${userState.action}`);
-    
+
   } catch (error) {
     console.error(`❌ Text processing error for user ${userId}:`, {
       action: userState.action,
       error: error.message,
       stack: error.stack
     });
-    
+
     logger.error('Text processing failed', {
       userId,
       action: userState.action,
       error: error.message
     });
-    
+
     // Clear the user state to prevent stuck states
     userStates.delete(userId);
-    
+
     // Send error message to user
     try {
       await ctx.reply(
@@ -1937,7 +1936,7 @@ async function showEthSellReview(ctx, tokenAddress, amount, type) {
     // Get token info for display
     let tokenSymbol = 'TOKEN';
     let tokenName = 'Unknown Token';
-    
+
     try {
       const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
       tokenSymbol = tokenInfo.symbol;
@@ -1957,7 +1956,7 @@ async function showEthSellReview(ctx, tokenAddress, amount, type) {
     ];
 
     const message = type === 'edit' ? ctx.editMessageText.bind(ctx) : ctx.reply.bind(ctx);
-    
+
     await message(
       `🔗 **ETH SALE REVIEW**
 
@@ -1980,7 +1979,7 @@ async function showEthSellReview(ctx, tokenAddress, amount, type) {
 
   } catch (error) {
     console.log('Error in ETH sell review:', error);
-    
+
     const errorMessage = type === 'edit' ? ctx.editMessageText.bind(ctx) : ctx.reply.bind(ctx);
     await errorMessage(
       `❌ **Error calculating ETH sale:**
@@ -2639,7 +2638,7 @@ bot.action(/^sol_buy_amount_(.+)_(.+)$/, async (ctx) => {
   const match = ctx.match;
   const amount = match[1];
   const shortId = match[2];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
     await showSolBuyReview(ctx, tokenAddress, amount);
@@ -2663,7 +2662,7 @@ bot.action(/^sol_sell_percentage_(.+)_(.+)$/, async (ctx) => {
   const match = ctx.match;
   const percentage = match[1];
   const shortId = match[2];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
     await showSolSellReview(ctx, tokenAddress, percentage, 'percentage');
@@ -2691,7 +2690,7 @@ bot.action(/^sol_buy_execute_(.+)_(.+)$/, async (ctx) => {
 
   try {
     await ctx.editMessageText('⏳ **Executing SOL purchase...**\n\n🚧 SOL trading will be available soon!');
-    
+
     // Mock successful execution for now
     setTimeout(async () => {
       try {
@@ -2738,7 +2737,7 @@ bot.action(/^sol_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
 
   try {
     await ctx.editMessageText('⏳ **Executing SOL sale...**\n\n🚧 SOL trading will be available soon!');
-    
+
     // Mock successful execution for now
     setTimeout(async () => {
       try {
@@ -2783,7 +2782,7 @@ bot.action(/^sol_buy_custom_(.+)$/, async (ctx) => {
 
   try {
     const tokenAddress = getFullTokenAddress(shortId);
-    
+
     await ctx.editMessageText(
       `🟣 **CUSTOM SOL AMOUNT**\n\nEnter the SOL amount you want to spend:\n\nExample: 0.25\n\nSend your custom amount now:`,
       {
@@ -2817,29 +2816,29 @@ bot.action(/^sol_buy_custom_(.+)$/, async (ctx) => {
 bot.action(/^check_tx_(.+)$/, async (ctx) => {
   const txHashPartial = ctx.match[1];
   const userId = ctx.from.id.toString();
-  
+
   try {
     const userData = await loadUserData(userId);
     const transactions = userData.transactions || [];
-    
+
     // Find transaction by partial hash
     const transaction = transactions.find(tx => 
       tx.txHash && tx.txHash.slice(2, 8) === txHashPartial
     );
-    
+
     if (!transaction) {
       await ctx.editMessageText('❌ Transaction not found in your history.');
       return;
     }
-    
+
     // Check status on-chain
     const provider = await ethChain.getProvider();
     const receipt = await provider.getTransactionReceipt(transaction.txHash);
-    
+
     if (!receipt) {
       await ctx.editMessageText(
         `⏳ **Transaction Status: Pending**
-        
+
 **Hash:** \`${transaction.txHash}\`
 **Status:** Still pending confirmation...
 
@@ -2856,13 +2855,13 @@ bot.action(/^check_tx_(.+)$/, async (ctx) => {
       );
       return;
     }
-    
+
     const status = receipt.status === 1 ? '✅ Confirmed' : '❌ Failed';
     const gasUsed = ethers.utils.formatUnits(receipt.gasUsed.mul(receipt.effectiveGasPrice || receipt.gasPrice || 0), 'ether');
-    
+
     await ctx.editMessageText(
       `${status} **Transaction Status**
-      
+
 **Hash:** \`${transaction.txHash}\`
 **Block:** ${receipt.blockNumber}
 **Gas Used:** ${gasUsed} ETH
@@ -2879,7 +2878,7 @@ bot.action(/^check_tx_(.+)$/, async (ctx) => {
         parse_mode: 'Markdown'
       }
     );
-    
+
   } catch (error) {
     console.log('Error checking transaction status:', error);
     await ctx.editMessageText('❌ Error checking transaction status. Please try again.');
@@ -2892,7 +2891,7 @@ bot.action(/^sol_sell_custom_(.+)$/, async (ctx) => {
 
   try {
     const tokenAddress = getFullTokenAddress(shortId);
-    
+
     await ctx.editMessageText(
       `🟣 **CUSTOM SOL SELL AMOUNT**\n\nEnter the token amount you want to sell:\n\nExample: 1000\n\nSend your custom amount now:`,
       {
@@ -2931,7 +2930,7 @@ bot.action(/^eth_sell_percentage_(.+)_(.+)$/, async (ctx) => {
   const match = ctx.match;
   const percentage = match[1];
   const shortId = match[2];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
     await showEthSellReview(ctx, tokenAddress, percentage, 'percentage');
@@ -2963,7 +2962,7 @@ bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
     await checkRateLimit(userId, 'transactions');
 
     await ctx.editMessageText('⏳ **Executing ETH token sale...**\n\n🚧 ETH sell functionality coming soon!');
-    
+
     // Mock successful execution for now
     setTimeout(async () => {
       try {
@@ -2988,7 +2987,7 @@ bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
 
   } catch (error) {
     console.log('Error in ETH sell execute handler:', error);
-    
+
     if (error.message.includes('Rate limit')) {
       await ctx.editMessageText(
         `❌ **Rate Limit Exceeded**\n\n${error.message}`,
@@ -3023,7 +3022,7 @@ bot.action(/^eth_sell_custom_(.+)$/, async (ctx) => {
 
   try {
     const tokenAddress = getFullTokenAddress(shortId);
-    
+
     await ctx.editMessageText(
       `🔗 **CUSTOM ETH SELL AMOUNT**\n\nEnter the token amount you want to sell:\n\nExample: 1000\n\nSend your custom amount now:`,
       {
@@ -3062,21 +3061,21 @@ bot.on('callback_query', async (ctx, next) => {
   try {
     const userId = ctx.from?.id;
     const callbackData = ctx.callbackQuery?.data;
-    
+
     console.log(`📥 Callback query: User ${userId}, Data: ${callbackData}`);
-    
+
     await next();
   } catch (error) {
     const userId = ctx.from?.id;
     const callbackData = ctx.callbackQuery?.data;
-    
+
     console.error('❌ Callback query error:', {
       userId,
       callbackData,
       error: error.message,
       stack: error.stack
     });
-    
+
     logger.error('Callback query failed', {
       userId,
       callbackData,
@@ -3097,7 +3096,7 @@ bot.on('callback_query', async (ctx, next) => {
       );
     } catch (editError) {
       console.error('❌ Failed to edit message after error:', editError.message);
-      
+
       // If we can't edit, send a new message
       try {
         await ctx.reply(
@@ -3137,20 +3136,20 @@ setInterval(() => {
 function validateEnvironment() {
   const required = ['BOT_TOKEN'];
   const optional = ['ETH_RPC_URL', 'SOL_RPC_URL', 'TREASURY_WALLET'];
-  
+
   console.log('🔍 Validating environment variables...');
-  
+
   const missing = required.filter(key => !process.env[key]);
-  
+
   if (missing.length > 0) {
     console.error('❌ Missing required environment variables:', missing.join(', '));
     console.error('💡 Please check your .env file and ensure these variables are set:');
     missing.forEach(key => console.error(`   - ${key}`));
     process.exit(1);
   }
-  
+
   console.log('✅ Required environment variables found');
-  
+
   // Log optional variables status
   optional.forEach(key => {
     if (process.env[key]) {
@@ -3159,7 +3158,7 @@ function validateEnvironment() {
       console.log(`⚠️ ${key}: not set (optional)`);
     }
   });
-  
+
   // Validate BOT_TOKEN format
   const token = process.env.BOT_TOKEN;
   if (!token.match(/^\d+:[A-Za-z0-9_-]{35}$/)) {
@@ -3167,7 +3166,7 @@ function validateEnvironment() {
     console.error('💡 Expected format: 123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefgh');
     process.exit(1);
   }
-  
+
   console.log('✅ BOT_TOKEN format validation passed');
 }
 
@@ -3179,10 +3178,10 @@ function validateEnvironment() {
 async function startBot() {
   try {
     console.log('🚀 Starting Purity Sniper Bot...');
-    
+
     // Validate environment first
     validateEnvironment();
-    
+
     // Create directories
     console.log('📁 Creating required directories...');
     await fs.mkdir('logs', { recursive: true });
@@ -3209,7 +3208,7 @@ async function startBot() {
     // Launch the bot
     console.log('🚀 Launching bot...');
     await bot.launch();
-    
+
     console.log('✅ Purity Sniper Bot is running!');
     console.log('🔗 Bot is ready to receive messages');
     console.log('💰 ETH buy/sell functionality fully integrated!');
@@ -3223,13 +3222,13 @@ async function startBot() {
       code: error.code,
       response: error.response?.data || 'No response data'
     });
-    
+
     if (error.message.includes('409')) {
       console.error('💡 Error 409: Another instance might be running. Stop other instances first.');
     } else if (error.message.includes('404')) {
       console.error('💡 Error 404: Bot token might be invalid or bot deleted.');
     }
-    
+
     process.exit(1);
   }
 }
@@ -3244,7 +3243,7 @@ bot.catch((err, ctx) => {
     callbackData: ctx?.callbackQuery?.data,
     messageText: ctx?.message?.text?.substring(0, 100) // First 100 chars only
   });
-  
+
   logger.error('Bot error caught', {
     error: err.message,
     userId: ctx?.from?.id,
