@@ -951,7 +951,8 @@ class RiskAnalysisEngine {
     if (analyses.tokenSafety) {
       totalRisk += analyses.tokenSafety.overallRisk * 0.4; // 40% weight
       riskCount++;
- Risk analysis issues corrected.
+    }
+
     if (analyses.transactionSafety) {
       totalRisk += (analyses.transactionSafety.mevRisk || 0) * 0.3; // 30% weight
       riskCount++;
