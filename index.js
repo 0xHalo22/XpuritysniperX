@@ -232,6 +232,68 @@ setInterval(() => {
 
 console.log('🎯 CHUNK 1 LOADED: Sniping data structures and state management ready!');
 
+// ====================================================================
+// BOT STARTUP AND ERROR HANDLING
+// ====================================================================
+
+// Validate required environment variables
+function validateEnvironment() {
+  const required = ['BOT_TOKEN'];
+  const missing = required.filter(key => !process.env[key]);
+  
+  if (missing.length > 0) {
+    console.error('❌ Missing required environment variables:', missing.join(', '));
+    console.error('💡 Please set these in the Secrets tab:');
+    missing.forEach(key => {
+      console.error(`   ${key}=your_${key.toLowerCase()}_here`);
+    });
+    process.exit(1);
+  }
+  
+  console.log('✅ Environment variables validated');
+}
+
+// Initialize and start the bot
+async function startBot() {
+  try {
+    // Validate environment
+    validateEnvironment();
+    
+    // Initialize database
+    console.log('🗄️ Initializing database...');
+    await initialize();
+    console.log('✅ Database initialized');
+    
+    // Start the bot
+    console.log('🤖 Starting Telegram bot...');
+    await bot.launch();
+    console.log('✅ Bot is running and ready to receive messages!');
+    console.log('📱 Send /start to the bot on Telegram to test');
+    
+  } catch (error) {
+    console.error('❌ Failed to start bot:', error.message);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown
+process.once('SIGINT', () => {
+  console.log('🛑 Received SIGINT, shutting down gracefully...');
+  cleanupSnipeMonitors();
+  bot.stop('SIGINT');
+  process.exit(0);
+});
+
+process.once('SIGTERM', () => {
+  console.log('🛑 Received SIGTERM, shutting down gracefully...');
+  cleanupSnipeMonitors();
+  bot.stop('SIGTERM');
+  process.exit(0);
+});
+
+// Start the bot
+startBot();
+
 // Helper function to get human-readable strategy display names
 function getStrategyDisplayName(strategy) {
   const strategyNames = {
