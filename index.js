@@ -356,75 +356,396 @@ async function getSnipeStatistics(userId) {
 // MESSAGE INPUT HANDLERS FOR SOL FLOWS
 // ====================================================================
 
-// Handle text messages for SOL flows
+// COMPLETE TEXT MESSAGE HANDLER - handles all user text inputs
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id.toString();
   const message = ctx.message.text.trim();
   const userState = userStates.get(userId);
 
-  if (!userState) return;
+  // Skip if no active user state (normal conversation)
+  if (!userState) {
+    return;
+  }
+
+  console.log(`DEBUG: Processing text for user ${userId}, action: ${userState.action}`);
 
   try {
-    // Handle SOL token address input
-    if (userState.action === 'sol_token_address') {
-      // Validate SOL token address
-      if (!solChain.isValidAddress(message)) {
-        await ctx.reply('❌ Invalid SOL token address. Please send a valid SPL token mint address.');
-        return;
-      }
+    // Route to appropriate handler based on user state action
+    switch (userState.action) {
+      // ETH WALLET IMPORT
+      case 'wallet_import':
+        await handleEthWalletImport(ctx, userId, message);
+        break;
 
-      // Clear user state
-      userStates.delete(userId);
+      // SOL WALLET IMPORT  
+      case 'sol_wallet_import':
+        await handleSolWalletImport(ctx, userId, message);
+        break;
 
-      // Show amount selection for this token
-      await showSolBuyAmountSelection(ctx, message);
-      return;
-    }
+      // ETH TOKEN ADDRESS INPUT
+      case 'token_address':
+        await handleEthTokenAddress(ctx, userId, message);
+        break;
 
-    // Handle SOL custom amount input (buy)
-    if (userState.action === 'sol_custom_amount') {
-      const amount = parseFloat(message);
-      
-      if (isNaN(amount) || amount <= 0 || amount > 100) {
-        await ctx.reply('❌ Invalid amount. Please enter a number between 0.001 and 100 SOL.');
-        return;
-      }
+      // ETH CUSTOM AMOUNT INPUT
+      case 'custom_amount':
+        await handleEthCustomAmount(ctx, userId, message, userState.tokenAddress);
+        break;
 
-      const tokenAddress = userState.tokenAddress;
-      
-      // Clear user state
-      userStates.delete(userId);
+      // ETH SELL TOKEN ADDRESS
+      case 'sell_token_address':
+        await handleEthSellTokenAddress(ctx, userId, message);
+        break;
 
-      // Show buy review
-      await showSolBuyReview(ctx, tokenAddress, amount.toString());
-      return;
-    }
+      // ETH SELL CUSTOM AMOUNT
+      case 'sell_custom_amount':
+        await handleEthSellCustomAmount(ctx, userId, message, userState.tokenAddress);
+        break;
 
-    // Handle SOL sell custom amount input
-    if (userState.action === 'sol_sell_custom_amount') {
-      const amount = parseFloat(message);
-      
-      if (isNaN(amount) || amount <= 0) {
-        await ctx.reply('❌ Invalid amount. Please enter a positive number.');
-        return;
-      }
+      // SOL TOKEN ADDRESS INPUT
+      case 'sol_token_address':
+        await handleSolTokenAddress(ctx, userId, message);
+        break;
 
-      const tokenAddress = userState.tokenAddress;
-      
-      // Clear user state  
-      userStates.delete(userId);
+      // SOL CUSTOM AMOUNT INPUT (BUY)
+      case 'sol_custom_amount':
+        await handleSolCustomAmount(ctx, userId, message, userState.tokenAddress);
+        break;
 
-      // Show sell review
-      await showSolSellReview(ctx, tokenAddress, amount.toString(), 'custom');
-      return;
+      // SOL SELL CUSTOM AMOUNT INPUT
+      case 'sol_sell_custom_amount':
+        await handleSolSellCustomAmount(ctx, userId, message, userState.tokenAddress);
+        break;
+
+      // SNIPE TARGET TOKENS
+      case 'waiting_liquidity_token':
+        await handleLiquidityTokenInput(ctx, userId, message);
+        break;
+
+      case 'waiting_method_token':
+        await handleMethodTokenInput(ctx, userId, message);
+        break;
+
+      // UNKNOWN STATE - CLEAN UP
+      default:
+        console.log(`Unknown user state action: ${userState.action}`);
+        userStates.delete(userId);
+        await ctx.reply('❌ Session expired. Please try again.');
+        break;
     }
 
   } catch (error) {
-    console.log(`Error handling SOL message input: ${error.message}`);
+    console.log(`Error handling text input for user ${userId}:`, error.message);
     userStates.delete(userId);
     await ctx.reply('❌ An error occurred. Please try again.');
   }
 });
+
+// ====================================================================
+// TEXT INPUT HANDLER FUNCTIONS
+// ====================================================================
+
+// ETH Wallet Import Handler
+async function handleEthWalletImport(ctx, userId, privateKey) {
+  try {
+    userStates.delete(userId);
+
+    const encryptedKey = await walletManager.importWallet(privateKey, userId);
+
+    // Update user data
+    const userData = await loadUserData(userId);
+    if (!userData.ethWallets) {
+      userData.ethWallets = [];
+    }
+    userData.ethWallets.push(encryptedKey);
+    await saveUserData(userId, userData);
+
+    const address = await walletManager.getWalletAddress(encryptedKey, userId);
+
+    await ctx.reply(
+      `✅ **ETH Wallet Imported Successfully!**
+
+Address: \`${address}\`
+
+🔐 Your private key has been encrypted and stored securely.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }
+          ]]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} imported ETH wallet: ${address}`);
+
+  } catch (error) {
+    logger.error(`ETH wallet import error for user ${userId}:`, error);
+    await ctx.reply(`❌ Error importing wallet: ${error.message}`);
+  }
+}
+
+// SOL Wallet Import Handler
+async function handleSolWalletImport(ctx, userId, privateKey) {
+  try {
+    userStates.delete(userId);
+
+    // Import SOL wallet using wallet manager
+    const encryptedKey = await walletManager.importWallet(privateKey, userId);
+
+    // Update user data
+    const userData = await loadUserData(userId);
+    if (!userData.solWallets) {
+      userData.solWallets = [];
+    }
+    userData.solWallets.push(encryptedKey);
+    await saveUserData(userId, userData);
+
+    const address = await walletManager.getWalletAddress(encryptedKey, userId);
+
+    await ctx.reply(
+      `✅ **SOL Wallet Imported Successfully!**
+
+Address: \`${address}\`
+
+🔐 Your private key has been encrypted and stored securely.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+          ]]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} imported SOL wallet: ${address}`);
+
+  } catch (error) {
+    logger.error(`SOL wallet import error for user ${userId}:`, error);
+    await ctx.reply(`❌ Error importing SOL wallet: ${error.message}`);
+  }
+}
+
+// ETH Token Address Handler
+async function handleEthTokenAddress(ctx, userId, tokenAddress) {
+  try {
+    userStates.delete(userId);
+
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format');
+    }
+
+    const validatingMessage = await ctx.reply('⏳ **Validating token...**');
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, validatingMessage.message_id);
+    } catch (deleteError) {
+      // Ignore if can't delete
+    }
+
+    await showEthBuyAmount(ctx, tokenAddress, tokenInfo);
+
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${error.message}\n\nPlease send a valid token contract address.`);
+  }
+}
+
+// ETH Custom Amount Handler
+async function handleEthCustomAmount(ctx, userId, amount, tokenAddress) {
+  try {
+    userStates.delete(userId);
+
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0 || amountFloat > 100) {
+      throw new Error('Invalid amount. Please enter a number between 0.001 and 100 ETH.');
+    }
+
+    await showEthBuyReviewReply(ctx, tokenAddress, amount);
+
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${error.message}`);
+  }
+}
+
+// ETH Sell Token Address Handler
+async function handleEthSellTokenAddress(ctx, userId, tokenAddress) {
+  try {
+    userStates.delete(userId);
+
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format');
+    }
+
+    const validatingMessage = await ctx.reply('⏳ **Validating token...**');
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, validatingMessage.message_id);
+    } catch (deleteError) {
+      // Ignore if can't delete
+    }
+
+    await showEthSellAmountSelectionReply(ctx, tokenAddress);
+
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${error.message}\n\nPlease send a valid token contract address.`);
+  }
+}
+
+// ETH Sell Custom Amount Handler
+async function handleEthSellCustomAmount(ctx, userId, amount, tokenAddress) {
+  try {
+    userStates.delete(userId);
+
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0) {
+      throw new Error('Invalid amount format');
+    }
+
+    await showEthSellReview(ctx, tokenAddress, amountFloat, 'custom');
+
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${error.message}`);
+  }
+}
+
+// SOL Token Address Handler
+async function handleSolTokenAddress(ctx, userId, tokenAddress) {
+  try {
+    userStates.delete(userId);
+
+    if (!solChain.isValidAddress(tokenAddress)) {
+      await ctx.reply('❌ Invalid SOL token address. Please send a valid SPL token mint address.');
+      return;
+    }
+
+    await showSolBuyAmountSelection(ctx, tokenAddress);
+
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${error.message}`);
+  }
+}
+
+// SOL Custom Amount Handler
+async function handleSolCustomAmount(ctx, userId, amount, tokenAddress) {
+  try {
+    userStates.delete(userId);
+
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0 || amountFloat > 100) {
+      await ctx.reply('❌ Invalid amount. Please enter a number between 0.001 and 100 SOL.');
+      return;
+    }
+
+    await showSolBuyReview(ctx, tokenAddress, amount);
+
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${error.message}`);
+  }
+}
+
+// SOL Sell Custom Amount Handler
+async function handleSolSellCustomAmount(ctx, userId, amount, tokenAddress) {
+  try {
+    userStates.delete(userId);
+
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0) {
+      await ctx.reply('❌ Invalid amount. Please enter a positive number.');
+      return;
+    }
+
+    await showSolSellReview(ctx, tokenAddress, amount, 'custom');
+
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${error.message}`);
+  }
+}
+
+// Liquidity Token Input Handler
+async function handleLiquidityTokenInput(ctx, userId, input) {
+  try {
+    userStates.delete(userId);
+
+    const parts = input.split(/\s+/);
+    const tokenAddress = parts[0];
+    const tokenLabel = parts.slice(1).join(' ') || null;
+
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format');
+    }
+
+    const userData = await loadUserData(userId);
+    if (!userData.snipeConfig.targetTokens) {
+      userData.snipeConfig.targetTokens = [];
+    }
+
+    const newToken = {
+      address: tokenAddress.toLowerCase(),
+      strategy: 'first_liquidity',
+      label: tokenLabel,
+      status: 'waiting',
+      addedAt: Date.now()
+    };
+
+    userData.snipeConfig.targetTokens.push(newToken);
+    await saveUserData(userId, userData);
+
+    await ctx.reply(`✅ **Token added to liquidity watch list!**\n\nAddress: \`${tokenAddress}\``);
+
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${error.message}`);
+  }
+}
+
+// Method Token Input Handler
+async function handleMethodTokenInput(ctx, userId, input) {
+  try {
+    userStates.delete(userId);
+
+    const parts = input.split(/\s+/);
+    if (parts.length < 2) {
+      throw new Error('You need both token address AND method signature');
+    }
+
+    const tokenAddress = parts[0];
+    const methodSignature = parts[1];
+    const tokenLabel = parts.slice(2).join(' ') || null;
+
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format');
+    }
+
+    if (!methodSignature.match(/^0x[a-fA-F0-9]{8}$/)) {
+      throw new Error('Invalid method signature format');
+    }
+
+    const userData = await loadUserData(userId);
+    if (!userData.snipeConfig.targetTokens) {
+      userData.snipeConfig.targetTokens = [];
+    }
+
+    const newToken = {
+      address: tokenAddress.toLowerCase(),
+      strategy: 'contract_methods',
+      method: methodSignature.toLowerCase(),
+      label: tokenLabel,
+      status: 'waiting',
+      addedAt: Date.now()
+    };
+
+    userData.snipeConfig.targetTokens.push(newToken);
+    await saveUserData(userId, userData);
+
+    await ctx.reply(`✅ **Method target added!**\n\nAddress: \`${tokenAddress}\`\nMethod: \`${methodSignature}\``);
+
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${error.message}`);
+  }
+}
 
 // Configure logging
 const logger = winston.createLogger({
@@ -1725,8 +2046,14 @@ Send your custom amount now:`,
 // SOL Sell Retry Handler
 bot.action(/^sol_sell_retry_(.+)$/, async (ctx) => {
   const tokenMint = ctx.match[1];
-  await showSolSellAmountSelectionReply(ctx, tokenMint);
+  await showSolSellAmountSelection(ctx, tokenMint);
 });
+
+// Add missing reply version function
+async function showSolSellAmountSelectionReply(ctx, tokenMint) {
+  // This is just a wrapper that calls the main function
+  await showSolSellAmountSelection(ctx, tokenMint);
+}
 
 // SOL Sell Execution Handler
 bot.action(/^sol_sell_exec_(.+)_(.+)_(.+)$/, async (ctx) => {
