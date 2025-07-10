@@ -290,6 +290,9 @@ async function startBot() {
     // Validate environment
     validateEnvironment();
 
+    // Setup file logging
+    await setupFileLogging();
+
     // Initialize database
     console.log('🗄️ Initializing database...');
     try {
@@ -982,10 +985,19 @@ async function getSolWalletAddress(userId, userData) {
 
 // Start command
 bot.start(async (ctx) => {
-  const userId = ctx.from.id.toString();
-  logger.info(`New user started bot: ${userId}`);
+  try {
+    const userId = ctx.from.id.toString();
+    logger.info(`New user started bot: ${userId}`);
 
-  await showMainMenu(ctx);
+    await showMainMenu(ctx);
+  } catch (error) {
+    logger.error(`Error in start command for user ${ctx.from?.id}:`, error);
+    try {
+      await ctx.reply('❌ An error occurred. Please try again.');
+    } catch (replyError) {
+      console.log('Failed to send error message:', replyError.message);
+    }
+  }
 });
 
 // Main menu display
@@ -1008,11 +1020,22 @@ You are here: 🕊️HOME
 www.puritysniperbot.com`;
 
   try {
-    await ctx.editMessageText(message, {
-      reply_markup: { inline_keyboard: keyboard },
-      parse_mode: 'Markdown'
-    });
+    // For callback queries, try to edit the message
+    if (ctx.callbackQuery) {
+      await ctx.editMessageText(message, {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      });
+    } else {
+      // For new conversations (like /start), send a new message
+      await ctx.reply(message, {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      });
+    }
   } catch (error) {
+    // Fallback to sending a new message if editing fails
+    logger.warn('Failed to edit message, sending new one:', error.message);
     await ctx.reply(message, {
       reply_markup: { inline_keyboard: keyboard },
       parse_mode: 'Markdown'
