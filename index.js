@@ -2797,6 +2797,21 @@ bot.action(/^sol_buy_custom_(.+)$/, async (ctx) => {
 
     userStates.set(userId, {
       action: 'sol_custom_amount',
+      tokenAddress: tokenAddress,
+      timestamp: Date.now()
+    });
+
+  } catch (error) {
+    console.log('Error in SOL custom amount handler:', error);
+    await ctx.editMessageText('❌ Error processing custom amount. Please try again.', {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+        ]]
+      }
+    });
+  }
+});
 
 // Transaction status checker
 bot.action(/^check_tx_(.+)$/, async (ctx) => {
