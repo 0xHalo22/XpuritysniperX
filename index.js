@@ -2886,23 +2886,6 @@ bot.action(/^check_tx_(.+)$/, async (ctx) => {
   }
 });
 
-
-      tokenAddress: tokenAddress,
-      timestamp: Date.now()
-    });
-
-  } catch (error) {
-    console.log('Error in SOL custom amount handler:', error);
-    await ctx.editMessageText('❌ Error processing custom amount. Please try again.', {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
-        ]]
-      }
-    });
-  }
-});
-
 bot.action(/^sol_sell_custom_(.+)$/, async (ctx) => {
   const shortId = ctx.match[1];
   const userId = ctx.from.id.toString();
