@@ -813,28 +813,29 @@ class EthChain {
 
     // PHASE 3: Pre-execution risk analysis
     console.log(`🛡️ Phase 3: Conducting comprehensive risk analysis...`);
-    
+
     try {
-      const provider = await this.getProvider();
-      
+      const provider = await```tool_code
+ this.getProvider();
+
       // Step 1: Analyze token safety (if not ETH/WETH)
       let tokenSafetyAnalysis = null;
       if (tokenOut !== this.contracts.WETH && tokenOut !== this.tokens.WETH && 
           tokenIn !== this.contracts.WETH && tokenIn !== this.tokens.WETH) {
-        
+
         const targetToken = tokenOut === this.contracts.WETH ? tokenIn : tokenOut;
         console.log(`🔍 Analyzing token safety: ${targetToken}`);
-        
+
         tokenSafetyAnalysis = await analyzeTokenSafety(targetToken, provider);
-        
+
         if (!tokenSafetyAnalysis.safeToTrade) {
           throw new Error(`🚨 TOKEN REJECTED: ${tokenSafetyAnalysis.riskFactors.join(', ')}`);
         }
-        
+
         if (tokenSafetyAnalysis.overallRisk > 6) {
           console.log(`⚠️ HIGH RISK TOKEN DETECTED! Risk score: ${tokenSafetyAnalysis.overallRisk}/10`);
           console.log(`🔥 Risk factors: ${tokenSafetyAnalysis.riskFactors.join(', ')}`);
-          
+
           // Adjust trading parameters for high-risk tokens
           slippagePercent = Math.max(slippagePercent, 25); // Minimum 25% slippage for risky tokens
           console.log(`🔧 Adjusted slippage to ${slippagePercent}% for high-risk token`);
@@ -926,7 +927,7 @@ class EthChain {
 
         // PHASE 3: Enhanced MEV Protection and Transaction Safety
         console.log(`🛡️ Applying Phase 3 MEV protection...`);
-        
+
         // Build initial transaction parameters
         let transactionParams = {
           ...transaction,
@@ -938,10 +939,10 @@ class EthChain {
 
         // Analyze transaction safety
         const transactionSafety = await analyzeTransactionSafety(transactionParams, provider);
-        
+
         if (!transactionSafety.safe) {
           console.log(`⚠️ Transaction safety warning: ${transactionSafety.warnings.join(', ')}`);
-          
+
           if (transactionSafety.riskLevel === 'HIGH' && !isSnipeMode) {
             throw new Error(`🚨 TRANSACTION REJECTED: ${transactionSafety.warnings.join(', ')}`);
           }
@@ -957,7 +958,7 @@ class EthChain {
         const baseNonce = await provider.getTransactionCount(wallet.address, 'latest');
         const nonceOffset = transactionParams.nonceOffset || (isSnipeMode ? Math.floor(Math.random() * 3) : 0);
         transaction.nonce = baseNonce + nonceOffset;
-        
+
         console.log(`🛡️ Enhanced MEV protection: nonce ${transaction.nonce} (base: ${baseNonce}, offset: ${nonceOffset})`);
         console.log(`📊 Transaction safety: ${transactionSafety.riskLevel} risk`);
 
@@ -998,18 +999,18 @@ class EthChain {
               transactionSafety: transactionSafety,
               userProtection: userProtection
             });
-            
+
             console.log(`📊 Risk Report Generated:`);
             console.log(`   Overall Risk: ${riskReport.summary.overallRisk}/10`);
             console.log(`   Recommendation: ${riskReport.summary.recommendation}`);
-            
+
             if (riskReport.actions.length > 0) {
               console.log(`   Suggested Actions: ${riskReport.actions.join(', ')}`);
             }
-            
+
             // Attach risk report to transaction response
             txResponse.riskReport = riskReport;
-            
+
           } catch (reportError) {
             console.log(`⚠️ Risk report generation failed: ${reportError.message}`);
           }
@@ -1043,6 +1044,35 @@ class EthChain {
 
     throw new Error(`All ${maxRetries} swap attempts failed`);
   }
+
+    // ====================================================================
+    // 🚀 ENHANCED TOKEN SWAP EXECUTION WITH APPROVAL - NEW FUNCTION
+    // This function handles token approval before executing the swap
+    // ====================================================================
+    async executeTokenSwapWithApproval(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3, options = {}) {
+      try {
+        console.log(`🚀 Executing Token Swap With Approval: ${amountIn.toString()} ${tokenIn} -> ${tokenOut}`);
+    
+        const provider = await this.getProvider();
+        const wallet = new ethers.Wallet(privateKey, provider);
+    
+        // Step 1: Approve token (if needed)
+        if (tokenIn !== this.tokens.WETH && tokenIn !== this.contracts.WETH) {
+          console.log(`🔑 Approving token ${tokenIn} for swap...`);
+          await this.smartApproveToken(tokenIn, this.contracts.UNISWAP_V2_ROUTER, amountIn, privateKey);
+        }
+    
+        // Step 2: Execute the token swap
+        console.log(`🔄 Executing token swap after approval...`);
+        const swapResult = await this.executeTokenSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent, options);
+    
+        return swapResult;
+    
+      } catch (error) {
+        console.log(`❌ Token swap with approval failed: ${error.message}`);
+        throw error;
+      }
+    }
 
     // ====================================================================
     // 🎯 SMART TOKEN SALE SYSTEM (UNCHANGED - WORKING)
@@ -1172,8 +1202,8 @@ class EthChain {
     // ====================================================================
 
     async executeSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3) {
-      console.log('⚠️ Using legacy executeSwap function - mapping to executeTokenSwap');
-      return await this.executeTokenSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent);
+      console.log('⚠️ Using legacy executeSwap function - mapping to executeTokenSwapWithApproval');
+      return await this.executeTokenSwapWithApproval(tokenIn, tokenOut, amountIn, privateKey, slippagePercent);
     }
 
     async executeTokenSale(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3) {

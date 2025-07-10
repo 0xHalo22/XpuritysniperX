@@ -527,6 +527,94 @@ async function trackRevenue(feeAmount) {
   }
 }
 
+// Background transaction confirmation
+async function confirmTransactionInBackground(txResponse, ctx, userId, type, details) {
+  try {
+    console.log(`⏳ Waiting for confirmation: ${txResponse.hash}`);
+    
+    // Wait up to 5 minutes for confirmation
+    const receipt = await Promise.race([
+      txResponse.wait(1),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Confirmation timeout')), 300000)
+      )
+    ]);
+    
+    if (receipt && receipt.status === 1) {
+      console.log(`✅ Transaction confirmed! Block: ${receipt.blockNumber}`);
+      
+      // Save to transaction history
+      await recordTransaction(userId, {
+        txHash: txResponse.hash,
+        type: type,
+        status: 'confirmed',
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed.toString(),
+        ...details,
+        timestamp: Date.now()
+      });
+      
+      // Notify user of confirmation
+      try {
+        await ctx.telegram.sendMessage(
+          ctx.chat.id,
+          `🎉 **Transaction Confirmed!**
+          
+Your ${type} transaction has been confirmed on-chain.
+Block: ${receipt.blockNumber}
+Hash: \`${txResponse.hash}\`
+
+[View on Etherscan](https://etherscan.io/tx/${txResponse.hash})`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (notifyError) {
+        console.log('Could not send confirmation notification:', notifyError.message);
+      }
+      
+    } else {
+      throw new Error('Transaction failed on-chain');
+    }
+    
+  } catch (error) {
+    console.error(`❌ Transaction confirmation failed: ${error.message}`);
+    
+    // Save failed transaction
+    await recordTransaction(userId, {
+      txHash: txResponse.hash,
+      type: type,
+      status: 'failed',
+      error: error.message,
+      ...details,
+      timestamp: Date.now()
+    });
+  }
+}
+
+// Background fee collection
+async function collectFeeInBackground(privateKey, feeAmount, userId) {
+  try {
+    console.log(`💰 Collecting fee in background: ${feeAmount} ETH`);
+    
+    const feeResult = await ethChain.collectFee(privateKey, feeAmount.toString());
+    
+    if (feeResult) {
+      console.log(`✅ Fee collected successfully: ${feeResult.hash}`);
+      
+      // Save fee transaction
+      await recordTransaction(userId, {
+        txHash: feeResult.hash,
+        type: 'fee',
+        status: 'sent',
+        amount: feeAmount.toString(),
+        timestamp: Date.now()
+      });
+    }
+    
+  } catch (feeError) {
+    console.error(`⚠️ Fee collection failed (non-blocking): ${feeError.message}`);
+  }
+}
+
 // ====================================================================
 // ETH WALLET MANAGEMENT
 // ====================================================================
@@ -1056,46 +1144,15 @@ bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
 
     // Execute main trade first
     console.log(`🚀 Executing main trade: ${netTradeAmount} ETH -> ${tokenAddress}`);
-    const swapResult = await ethChain.executeTokenSwap(
+    const swapResult = await ethChain.executeTokenSwapWithApproval(
       ethChain.contracts.WETH,
       tokenAddress,
       ethers.utils.parseEther(netTradeAmount.toString()),
       wallet.privateKey,
-      3 // 3% slippage
+      6, // Use higher slippage as determined by risk analysis
+      { userId: userId }
     );
     console.log(`✅ Main trade executed! Hash: ${swapResult.hash}`);
-
-    // Collect fee after trade (non-blocking)
-    let feeResult = null;
-    if (feeAmount > 0) {
-      try {
-        console.log(`💰 Collecting fee AFTER main trade: ${feeAmount} ETH`);
-        feeResult = await ethChain.collectFee(
-          wallet.privateKey,
-          feeAmount.toString()
-        );
-        if (feeResult) {
-          console.log(`✅ Fee collected successfully! Hash: ${feeResult.hash}`);
-        }
-      } catch (feeError) {
-        console.log(`⚠️ Fee collection error (non-blocking): ${feeError.message}`);
-      }
-    }
-
-    // Record success
-    await recordTransaction(userId, {
-      type: 'buy',
-      tokenAddress,
-      amount: totalAmount.toString(),
-      tradeAmount: netTradeAmount.toString(),
-      feeAmount: feeAmount.toString(),
-      txHash: swapResult.hash,
-      feeHash: feeResult?.hash || null,
-      timestamp: Date.now(),
-      chain: 'ethereum'
-    });
-
-    await trackRevenue(feeAmount);
 
     // Get token info for success message
     let tokenSymbol = 'TOKEN';
@@ -1104,10 +1161,12 @@ bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
       tokenSymbol = tokenInfo.symbol;
     } catch (e) {
       console.log('Could not get token symbol for success message');
+      tokenSymbol = 'TOKEN';
     }
 
+    // Update UI immediately with transaction sent
     await ctx.editMessageText(
-      `✅ **PURCHASE SUCCESSFUL!**
+      `✅ **PURCHASE TRANSACTION SENT!**
 
 **Trade Amount:** ${netTradeAmount.toFixed(6)} ETH → ${tokenSymbol}
 **Service Fee:** ${feeAmount.toFixed(6)} ETH  
@@ -1115,19 +1174,47 @@ bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
 
 **🔗 Transaction:** [View on Etherscan](https://etherscan.io/tx/${swapResult.hash})
 **Hash:** \`${swapResult.hash}\`
+**Status:** ⏳ Pending confirmation...
 
-🎉 Your tokens should appear in your wallet shortly!`,
+Your tokens will appear once confirmed!`,
       {
         reply_markup: {
           inline_keyboard: [
+            [{ text: '🔄 Check Status', callback_data: `check_tx_${swapResult.hash.slice(2, 8)}` }],
             [{ text: '💰 Buy More', callback_data: 'eth_buy' }],
-            [{ text: '📈 Sell Tokens', callback_data: 'eth_sell' }],
             [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
           ]
         },
         parse_mode: 'Markdown'
       }
     );
+
+    // Start background confirmation tracking
+    confirmTransactionInBackground(swapResult, ctx, userId, 'buy', {
+      tokenAddress,
+      amount: netTradeAmount.toString(),
+      tokenSymbol
+    });
+
+    // Collect fee in background (non-blocking)
+    if (feeAmount > 0) {
+      collectFeeInBackground(wallet.privateKey, feeAmount, userId);
+    }
+
+    // Record transaction immediately as sent
+    await recordTransaction(userId, {
+      type: 'buy',
+      tokenAddress,
+      amount: totalAmount.toString(),
+      tradeAmount: netTradeAmount.toString(),
+      feeAmount: feeAmount.toString(),
+      txHash: swapResult.hash,
+      status: 'sent',
+      timestamp: Date.now(),
+      chain: 'ethereum'
+    });
+
+    await trackRevenue(feeAmount);
 
     logger.info(`Successful ETH buy: User ${userId}, Token ${tokenAddress}, Amount ${totalAmount} ETH`);
 
@@ -2710,6 +2797,81 @@ bot.action(/^sol_buy_custom_(.+)$/, async (ctx) => {
 
     userStates.set(userId, {
       action: 'sol_custom_amount',
+
+// Transaction status checker
+bot.action(/^check_tx_(.+)$/, async (ctx) => {
+  const txHashPartial = ctx.match[1];
+  const userId = ctx.from.id.toString();
+  
+  try {
+    const userData = await loadUserData(userId);
+    const transactions = userData.transactions || [];
+    
+    // Find transaction by partial hash
+    const transaction = transactions.find(tx => 
+      tx.txHash && tx.txHash.slice(2, 8) === txHashPartial
+    );
+    
+    if (!transaction) {
+      await ctx.editMessageText('❌ Transaction not found in your history.');
+      return;
+    }
+    
+    // Check status on-chain
+    const provider = await ethChain.getProvider();
+    const receipt = await provider.getTransactionReceipt(transaction.txHash);
+    
+    if (!receipt) {
+      await ctx.editMessageText(
+        `⏳ **Transaction Status: Pending**
+        
+**Hash:** \`${transaction.txHash}\`
+**Status:** Still pending confirmation...
+
+[View on Etherscan](https://etherscan.io/tx/${transaction.txHash})`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔄 Check Again', callback_data: `check_tx_${txHashPartial}` }],
+              [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+            ]
+          },
+          parse_mode: 'Markdown'
+        }
+      );
+      return;
+    }
+    
+    const status = receipt.status === 1 ? '✅ Confirmed' : '❌ Failed';
+    const gasUsed = ethers.utils.formatUnits(receipt.gasUsed.mul(receipt.effectiveGasPrice || receipt.gasPrice || 0), 'ether');
+    
+    await ctx.editMessageText(
+      `${status} **Transaction Status**
+      
+**Hash:** \`${transaction.txHash}\`
+**Block:** ${receipt.blockNumber}
+**Gas Used:** ${gasUsed} ETH
+**Status:** ${status}
+
+[View on Etherscan](https://etherscan.io/tx/${transaction.txHash})`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💰 Trade More', callback_data: 'chain_eth' }],
+            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+    
+  } catch (error) {
+    console.log('Error checking transaction status:', error);
+    await ctx.editMessageText('❌ Error checking transaction status. Please try again.');
+  }
+});
+
+
       tokenAddress: tokenAddress,
       timestamp: Date.now()
     });
