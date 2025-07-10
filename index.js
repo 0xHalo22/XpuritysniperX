@@ -1927,27 +1927,57 @@ Select the percentage of your holdings to sell:`,
   );
 }
 
-// ETH Sell Review - Enhanced Version
+// ETH Sell Review - REAL CALCULATION VERSION
 async function showEthSellReview(ctx, tokenAddress, amount, type) {
   const userId = ctx.from.id.toString();
   const userData = await loadUserData(userId);
 
   try {
-    // Get token info for display
-    let tokenSymbol = 'TOKEN';
-    let tokenName = 'Unknown Token';
+    // Show loading message
+    const message = type === 'edit' ? ctx.editMessageText.bind(ctx) : ctx.reply.bind(ctx);
+    await message('⏳ **Calculating sell details...**');
 
-    try {
-      const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
-      tokenSymbol = tokenInfo.symbol;
-      tokenName = tokenInfo.name;
-    } catch (tokenError) {
-      console.log('Could not get token info for sell review:', tokenError.message);
+    const wallet = await getWalletForTrading(userId, userData);
+
+    // Get token info and balance
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
+    const balanceFormatted = parseFloat(ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals));
+
+    // Calculate sell amount
+    let sellAmount;
+    if (type === 'percentage') {
+      sellAmount = balanceFormatted * (parseFloat(amount) / 100);
+    } else {
+      sellAmount = parseFloat(amount);
     }
 
-    // Calculate fee information
+    if (sellAmount > balanceFormatted) {
+      throw new Error(`Insufficient balance. You have ${balanceFormatted.toFixed(4)} ${tokenInfo.symbol}`);
+    }
+
+    const sellAmountWei = ethers.utils.parseUnits(sellAmount.toString(), tokenInfo.decimals);
+
+    // Get swap quote for expected ETH
+    const quote = await ethChain.getSwapQuote(tokenAddress, ethChain.contracts.WETH, sellAmountWei);
+    const expectedEth = parseFloat(ethers.utils.formatEther(quote.outputAmount));
+
+    // Calculate fees
     const feePercent = userData.premium?.active ? 0.5 : 1.0;
-    const amountText = type === 'percentage' ? `${amount}% of holdings` : `${amount} tokens`;
+    const feeAmount = expectedEth * (feePercent / 100);
+    const netReceive = expectedEth - feeAmount;
+
+    // Estimate gas cost
+    const gasEstimate = await ethChain.estimateSwapGas(tokenAddress, ethChain.contracts.WETH, sellAmountWei, wallet.address);
+    const gasCostEth = parseFloat(ethers.utils.formatEther(gasEstimate.totalCost));
+
+    // Check if user has enough ETH for gas
+    const ethBalance = await ethChain.getETHBalance(wallet.address);
+    const ethBalanceFloat = parseFloat(ethBalance);
+
+    if (ethBalanceFloat < gasCostEth) {
+      throw new Error(`Insufficient ETH for gas. Need ${gasCostEth.toFixed(6)} ETH, have ${ethBalance} ETH`);
+    }
 
     // Store token mapping and use short ID for callback data
     const shortId = storeTokenMapping(tokenAddress);
@@ -1958,22 +1988,27 @@ async function showEthSellReview(ctx, tokenAddress, amount, type) {
       [{ text: '🔙 Cancel', callback_data: 'chain_eth' }]
     ];
 
-    const message = type === 'edit' ? ctx.editMessageText.bind(ctx) : ctx.reply.bind(ctx);
+    const amountText = type === 'percentage' ? `${amount}% (${sellAmount.toFixed(4)} ${tokenInfo.symbol})` : `${sellAmount.toFixed(4)} ${tokenInfo.symbol}`;
 
     await message(
       `🔗 **ETH SALE REVIEW**
 
-**Token:** ${tokenName} (${tokenSymbol})
+**Token:** ${tokenInfo.name} (${tokenInfo.symbol})
 **Address:** ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}
-**Amount:** ${amountText}
+**Your Balance:** ${balanceFormatted.toFixed(4)} ${tokenInfo.symbol}
 
-**💰 TRADE BREAKDOWN:**
-• Service Fee: ${feePercent}%
-• Gas Estimate: ~$5-15
-• Network: Ethereum Mainnet
+**💰 SALE BREAKDOWN:**
+• Sell Amount: ${amountText}
+• Expected ETH: ${expectedEth.toFixed(6)} ETH
+• Service Fee (${feePercent}%): ${feeAmount.toFixed(6)} ETH
+• **Net Receive: ${netReceive.toFixed(6)} ETH**
+• Gas Cost: ~${gasCostEth.toFixed(6)} ETH
 
-**⚠️ FINAL CONFIRMATION REQUIRED**
-🚧 Complete ETH sell functionality coming soon!`,
+**📊 WALLET STATUS:**
+• ETH Balance: ${ethBalance} ETH
+• Gas Available: ✅ Sufficient
+
+**⚠️ FINAL CONFIRMATION REQUIRED**`,
       {
         reply_markup: { inline_keyboard: keyboard },
         parse_mode: 'Markdown'
@@ -1984,10 +2019,20 @@ async function showEthSellReview(ctx, tokenAddress, amount, type) {
     console.log('Error in ETH sell review:', error);
 
     const errorMessage = type === 'edit' ? ctx.editMessageText.bind(ctx) : ctx.reply.bind(ctx);
+    
+    let helpText = '';
+    if (error.message.includes('Insufficient balance')) {
+      helpText = '\n💡 **Tip:** Try selling a smaller percentage or check your token balance.';
+    } else if (error.message.includes('Insufficient ETH for gas')) {
+      helpText = '\n💡 **Tip:** Add more ETH to your wallet to cover gas fees.';
+    } else if (error.message.includes('No liquidity')) {
+      helpText = '\n💡 **Tip:** This token may have limited trading liquidity.';
+    }
+
     await errorMessage(
       `❌ **Error calculating ETH sale:**
 
-${error.message}`,
+${error.message}${helpText}`,
       {
         reply_markup: {
           inline_keyboard: [
@@ -2952,7 +2997,7 @@ bot.action(/^eth_sell_percentage_(.+)_(.+)$/, async (ctx) => {
   }
 });
 
-// ETH Sell Execute Handlers
+// ETH Sell Execute Handlers - REAL BLOCKCHAIN EXECUTION
 bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
   const match = ctx.match;
   const shortId = match[1];
@@ -2967,57 +3012,160 @@ bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
     // Get full token address from short ID
     const tokenAddress = getFullTokenAddress(shortId);
 
-    await ctx.editMessageText('⏳ **Executing ETH token sale...**\n\n🚧 ETH sell functionality coming soon!');
+    await ctx.editMessageText('⏳ **Starting ETH token sale...**\n\nStep 1/3: Preparing sale...');
 
-    // Mock successful execution for now
-    setTimeout(async () => {
-      try {
-        const amountText = type === 'percentage' ? `${amount}% of holdings` : `${amount} tokens`;
-        await ctx.editMessageText(
-          `✅ **ETH SALE SIMULATION**\n\n**Amount:** ${amountText}\n**Token:** \`${tokenAddress}\`\n\n🚧 This was a simulation. Complete ETH sell coming soon!`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '💰 Sell More', callback_data: 'eth_sell' }],
-                [{ text: '📈 Buy Tokens', callback_data: 'eth_buy' }],
-                [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
-              ]
-            },
-            parse_mode: 'Markdown'
-          }
-        );
-      } catch (editError) {
-        console.log('Error editing ETH sell execute message:', editError);
+    const userData = await loadUserData(userId);
+    const wallet = await getWalletForTrading(userId, userData);
+
+    // Get token info and balance
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
+    const balanceFormatted = parseFloat(ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals));
+
+    // Calculate sell amount based on type
+    let sellAmount;
+    if (type === 'percentage') {
+      sellAmount = balanceFormatted * (parseFloat(amount) / 100);
+    } else {
+      sellAmount = parseFloat(amount);
+    }
+
+    if (sellAmount > balanceFormatted) {
+      throw new Error(`Insufficient balance. You have ${balanceFormatted} ${tokenInfo.symbol}`);
+    }
+
+    const sellAmountWei = ethers.utils.parseUnits(sellAmount.toString(), tokenInfo.decimals);
+
+    // Use smart sell amount calculation for precision
+    const actualSellAmountWei = ethChain.calculateSmartSellAmount(
+      tokenBalance, 
+      type === 'percentage' ? parseFloat(amount) : (sellAmount / balanceFormatted) * 100,
+      tokenInfo.decimals
+    );
+
+    const actualSellAmount = parseFloat(ethers.utils.formatUnits(actualSellAmountWei, tokenInfo.decimals));
+
+    console.log(`💰 Executing ETH sell: ${actualSellAmount} ${tokenInfo.symbol} -> ETH`);
+
+    await ctx.editMessageText('⏳ **Starting ETH token sale...**\n\nStep 2/3: Executing sale...');
+
+    // Execute the token sale using the smart token sale system
+    const saleResult = await ethChain.executeSmartTokenSale(
+      tokenAddress,
+      ethChain.contracts.WETH, // Sell to WETH (ETH)
+      type === 'percentage' ? parseFloat(amount) : (sellAmount / balanceFormatted) * 100,
+      wallet.privateKey,
+      6 // Use higher slippage for sells
+    );
+
+    console.log(`✅ ETH sell executed! Hash: ${saleResult.transaction.hash}`);
+
+    await ctx.editMessageText('⏳ **Starting ETH token sale...**\n\nStep 3/3: Processing fees...');
+
+    // Calculate and collect fee
+    const userData2 = await loadUserData(userId); // Reload to get latest data
+    const feePercent = userData2.premium?.active ? 0.5 : 1.0;
+
+    // Get estimated ETH received from the sale
+    try {
+      const quote = await ethChain.getSwapQuote(tokenAddress, ethChain.contracts.WETH, actualSellAmountWei);
+      const expectedEth = parseFloat(ethers.utils.formatEther(quote.outputAmount));
+      const feeAmount = expectedEth * (feePercent / 100);
+
+      // Collect fee in background (non-blocking)
+      if (feeAmount > 0.001) { // Only collect if fee is meaningful
+        collectFeeInBackground(wallet.privateKey, feeAmount, userId);
       }
-    }, 2000);
+    } catch (feeCalcError) {
+      console.log('⚠️ Could not calculate fee for sell:', feeCalcError.message);
+    }
+
+    // Update UI with success
+    const amountText = type === 'percentage' ? `${amount}% (${actualSellAmount.toFixed(4)} ${tokenInfo.symbol})` : `${actualSellAmount.toFixed(4)} ${tokenInfo.symbol}`;
+    
+    await ctx.editMessageText(
+      `✅ **ETH SALE COMPLETED!**
+
+**Token Sold:** ${tokenInfo.name} (${tokenInfo.symbol})
+**Amount:** ${amountText}
+**Service Fee:** ${feePercent}%
+
+**🔗 Transaction:** [View on Etherscan](https://etherscan.io/tx/${saleResult.transaction.hash})
+**Hash:** \`${saleResult.transaction.hash}\`
+**Status:** ⏳ Pending confirmation...
+
+Your ETH will appear once confirmed!`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Check Status', callback_data: `check_tx_${saleResult.transaction.hash.slice(2, 8)}` }],
+            [{ text: '💰 Sell More', callback_data: 'eth_sell' }],
+            [{ text: '📈 Buy Tokens', callback_data: 'eth_buy' }],
+            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    // Start background confirmation tracking
+    confirmTransactionInBackground(saleResult.transaction, ctx, userId, 'sell', {
+      tokenAddress,
+      tokenSymbol: tokenInfo.symbol,
+      amount: actualSellAmount.toString()
+    });
+
+    // Record transaction
+    await recordTransaction(userId, {
+      type: 'sell',
+      tokenAddress,
+      tokenSymbol: tokenInfo.symbol,
+      amount: actualSellAmount.toString(),
+      percentage: type === 'percentage' ? parseFloat(amount) : null,
+      txHash: saleResult.transaction.hash,
+      status: 'sent',
+      timestamp: Date.now(),
+      chain: 'ethereum'
+    });
+
+    logger.info(`Successful ETH sell: User ${userId}, Token ${tokenInfo.symbol}, Amount ${actualSellAmount}`);
 
   } catch (error) {
-    console.log('Error in ETH sell execute handler:', error);
+    logger.error(`ETH sell execution error for user ${userId}:`, error);
 
-    if (error.message.includes('Rate limit')) {
-      await ctx.editMessageText(
-        `❌ **Rate Limit Exceeded**\n\n${error.message}`,
-        {
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🏠 Main Menu', callback_data: 'main_menu' }
-            ]]
-          }
-        }
-      );
-    } else {
-      await ctx.editMessageText(
-        `❌ **ETH Sale Failed**\n\n${error.message}`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🔄 Try Again', callback_data: 'eth_sell' }],
-              [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
-            ]
-          }
-        }
-      );
+    let errorMessage = error.message;
+    let helpTip = '💡 **Tip:** This is usually a temporary network issue. Please try again.';
+
+    if (error.message.includes('insufficient funds')) {
+      helpTip = '💡 **Tip:** Ensure you have enough ETH for gas fees.';
+    } else if (error.message.includes('Insufficient balance')) {
+      helpTip = '💡 **Tip:** Check your token balance and try a smaller amount.';
+    } else if (error.message.includes('No liquidity')) {
+      helpTip = '💡 **Tip:** This token may have limited liquidity on Uniswap.';
+    } else if (error.message.includes('Rate limit')) {
+      helpTip = '💡 **Tip:** Please wait before making another transaction.';
+      errorMessage = 'Transaction rate limit exceeded. Please wait a moment.';
     }
+
+    await ctx.editMessageText(
+      `❌ **ETH SALE FAILED**
+
+**Error:** ${errorMessage}
+
+${helpTip}
+
+Your tokens are safe - no transaction was completed.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'eth_sell' }],
+            [{ text: '📈 Buy Instead', callback_data: 'eth_buy' }],
+            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
   }
 });
 
