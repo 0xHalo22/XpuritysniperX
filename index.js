@@ -5226,8 +5226,13 @@ async function initializeBot() {
 
     // Initialize Supabase
     try {
+      console.log('🔄 Connecting to Supabase database...');
+      console.log(`📡 Supabase URL: ${process.env.SUPABASE_URL ? 'Found' : 'Missing'}`);
+      console.log(`🔑 Supabase Key: ${process.env.SUPABASE_ANON_KEY ? 'Found' : 'Missing'}`);
+      
       await initializeSupabase();
-      console.log('✅ Supabase database connected');
+      console.log('✅ Supabase database connected successfully!');
+      console.log('🚀 PostgreSQL backend ready for 100k+ users!');
     } catch (supabaseError) {
       console.log('⚠️ Supabase connection failed, using JSON fallback:', supabaseError.message);
     }

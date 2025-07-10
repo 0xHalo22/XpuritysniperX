@@ -17,8 +17,12 @@ class SupabaseManager {
    */
   async initialize() {
     try {
+      console.log('🔍 Checking Supabase environment variables...');
+      console.log(`   SUPABASE_URL: ${process.env.SUPABASE_URL ? '✅ Set' : '❌ Missing'}`);
+      console.log(`   SUPABASE_ANON_KEY: ${process.env.SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing'}`);
+      
       if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-        throw new Error('Supabase credentials missing. Add SUPABASE_URL and SUPABASE_ANON_KEY to .env');
+        throw new Error('Supabase credentials missing. Check your Replit Secrets configuration.');
       }
 
       this.supabase = createClient(
