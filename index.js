@@ -1037,11 +1037,11 @@ Please send a valid token amount (e.g., 1000)`,
 bot.action('statistics', async (ctx) => {
   const userId = ctx.from.id.toString();
   const userData = await loadUserData(userId);
-  
+
   const transactions = userData.transactions || [];
   const totalTrades = transactions.length;
   const totalVolume = transactions.reduce((sum, tx) => sum + (parseFloat(tx.amount) || 0), 0);
-  
+
   const keyboard = [
     [{ text: '📊 Trading History', callback_data: 'view_trading_history' }],
     [{ text: '💰 Revenue Report', callback_data: 'view_revenue_report' }],
@@ -1070,7 +1070,7 @@ bot.action('statistics', async (ctx) => {
 bot.action('settings', async (ctx) => {
   const userId = ctx.from.id.toString();
   const userData = await loadUserData(userId);
-  
+
   const keyboard = [
     [{ text: '⚙️ Trading Settings', callback_data: 'trading_settings' }],
     [{ text: '🔐 Security Settings', callback_data: 'security_settings' }],
@@ -1265,7 +1265,7 @@ async function showSolWalletManagement(ctx, userData) {
 // ETH Buy Amount Selection
 async function showEthBuyAmount(ctx, tokenAddress, tokenInfo) {
   const shortId = storeTokenMapping(tokenAddress);
-  
+
   const keyboard = [
     [
       { text: '0.1 ETH', callback_data: `eth_buy_amount_0.1_${shortId}` },
@@ -1320,7 +1320,7 @@ Ready to proceed?`,
 // ETH Sell Amount Selection
 async function showEthSellAmountSelectionReply(ctx, tokenAddress) {
   const shortId = storeTokenMapping(tokenAddress);
-  
+
   const keyboard = [
     [
       { text: '25%', callback_data: `eth_sell_percentage_25_${shortId}` },
@@ -1524,7 +1524,7 @@ bot.action('view_revenue_report', async (ctx) => {
 bot.action(/^sol_buy_amount_(.+)_(.+)$/, async (ctx) => {
   const amount = ctx.match[1];
   const shortId = ctx.match[2];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
     await showSolBuyReview(ctx, tokenAddress, amount);
@@ -1536,10 +1536,10 @@ bot.action(/^sol_buy_amount_(.+)_(.+)$/, async (ctx) => {
 // SOL Buy Custom Amount Handler
 bot.action(/^sol_buy_custom_(.+)$/, async (ctx) => {
   const shortId = ctx.match[1];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
-    
+
     await ctx.editMessageText(
       `🟣 **CUSTOM SOL AMOUNT**
 
@@ -1573,7 +1573,7 @@ bot.action(/^sol_buy_execute_(.+)_(.+)$/, async (ctx) => {
     await ctx.editMessageText('⏳ **Executing SOL purchase...**', { parse_mode: 'Markdown' });
 
     const userData = await loadUserData(userId);
-    
+
     if (!userData.solWallets || userData.solWallets.length === 0) {
       throw new Error('No SOL wallet found. Please import a wallet first.');
     }
@@ -1641,7 +1641,7 @@ Please try again or contact support.`,
 bot.action(/^sol_sell_percentage_(.+)_(.+)$/, async (ctx) => {
   const percentage = ctx.match[1];
   const shortId = ctx.match[2];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
     await showSolSellReview(ctx, tokenAddress, percentage, 'percentage');
@@ -1653,10 +1653,10 @@ bot.action(/^sol_sell_percentage_(.+)_(.+)$/, async (ctx) => {
 // SOL Sell Custom Amount Handler
 bot.action(/^sol_sell_custom_(.+)$/, async (ctx) => {
   const shortId = ctx.match[1];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
-    
+
     await ctx.editMessageText(
       `🟣 **CUSTOM SOL SELL AMOUNT**
 
@@ -1691,7 +1691,7 @@ bot.action(/^sol_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
     await ctx.editMessageText('⏳ **Executing SOL sale...**', { parse_mode: 'Markdown' });
 
     const userData = await loadUserData(userId);
-    
+
     if (!userData.solWallets || userData.solWallets.length === 0) {
       throw new Error('No SOL wallet found. Please import a wallet first.');
     }
@@ -1759,6 +1759,137 @@ Please try again or contact support.`,
 });
 
 // ====================================================================
+// ETH TRADING EXECUTION FUNCTIONS - PHASE 3 IMPLEMENTATION
+// ====================================================================
+
+// Execute ETH Buy Trade
+async function executeEthBuy(userId, userData, tokenAddress, amount) {
+  try {
+    console.log(`🔗 Executing ETH buy: ${amount} ETH -> ${tokenAddress}`);
+
+    // Get user's ETH wallet
+    const wallet = await getWalletForTrading(userId, userData);
+
+    // Check ETH balance
+    const balance = await ethChain.getETHBalance(wallet.address);
+    const requiredAmount = parseFloat(amount) + 0.01; // Add buffer for fees
+
+    if (parseFloat(balance) < requiredAmount) {
+      throw new Error(`Insufficient ETH balance. Required: ${requiredAmount} ETH, Available: ${balance} ETH`);
+    }
+
+    // Calculate fee (1.5% of purchase amount)
+    const feeCalculation = ethChain.calculateFeeBreakdown(amount, 1.5);
+    const netAmount = feeCalculation.netAmount;
+
+    // Execute swap using Uniswap
+    const swapResult = await ethChain.executeTokenSwap(
+      ethChain.contracts.WETH,
+      tokenAddress,
+      ethers.utils.parseEther(netAmount),
+      wallet.privateKey,
+      5 // 5% slippage for ETH trades
+    );
+
+    // Send fee to treasury
+    const feeResult = await ethChain.collectFee(wallet.privateKey, feeCalculation.feeAmount);
+
+    // Track revenue
+    await trackRevenue(feeCalculation.feeAmount);
+
+    console.log(`✅ ETH buy completed: ${swapResult.hash}`);
+
+    return {
+      success: true,
+      hash: swapResult.hash,
+      fee: feeCalculation.feeAmount,
+      outputAmount: swapResult.outputAmount
+    };
+
+  } catch (error) {
+    console.log(`❌ ETH buy failed: ${error.message}`);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// Execute ETH Sell Trade
+async function executeEthSell(userId, userData, tokenAddress, amount, type) {
+  try {
+    console.log(`🔗 Executing ETH sell: ${amount} (${type}) ${tokenAddress} -> ETH`);
+
+    // Get user's ETH wallet
+    const wallet = await getWalletForTrading(userId, userData);
+
+    // Get token holdings
+    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+
+    if (tokenBalance.isZero()) {
+      throw new Error('No tokens found in wallet to sell');
+    }
+
+    // Calculate sell amount
+    let sellAmount;
+    if (type === 'percentage') {
+      const percentage = parseFloat(amount);
+      sellAmount = ethChain.calculateSmartSellAmount(tokenBalance, percentage, tokenInfo.decimals);
+    } else {
+      sellAmount = ethers.utils.parseUnits(amount.toString(), tokenInfo.decimals);
+    }
+
+    if (sellAmount.gt(tokenBalance)) {
+      throw new Error(`Insufficient token balance. Requested: ${amount}, Available: ${ethChain.formatTokenBalance(tokenBalance, tokenInfo.decimals)}`);
+    }
+
+    // Approve token for trading
+    await ethChain.smartApproveToken(
+      tokenAddress, 
+      ethChain.contracts.UNISWAP_V2_ROUTER, 
+      sellAmount, 
+      wallet.privateKey
+    );
+
+    // Execute swap using Uniswap
+    const swapResult = await ethChain.executeTokenSwap(
+      tokenAddress,
+      ethChain.contracts.WETH,
+      sellAmount,
+      wallet.privateKey,
+      5 // 5% slippage for ETH trades
+    );
+
+    // Calculate fee (1.5% of received ETH)
+    const receivedEth = ethers.utils.formatEther(swapResult.value || ethers.BigNumber.from(0));
+    const feeCalculation = ethChain.calculateFeeBreakdown(receivedEth, 1.5);
+
+    // Send fee to treasury
+    const feeResult = await ethChain.collectFee(wallet.privateKey, feeCalculation.feeAmount);
+
+    // Track revenue
+    await trackRevenue(feeCalculation.feeAmount);
+
+    console.log(`✅ ETH sell completed: ${swapResult.hash}`);
+
+    return {
+      success: true,
+      hash: swapResult.hash,
+      fee: feeCalculation.feeAmount,
+      receivedETH: feeCalculation.netAmount
+    };
+
+  } catch (error) {
+    console.log(`❌ ETH sell failed: ${error.message}`);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// ====================================================================
 // SOL TRADING EXECUTION FUNCTIONS - PHASE 2 IMPLEMENTATION
 // ====================================================================
 
@@ -1783,7 +1914,7 @@ async function executeSolBuy(userId, userData, tokenAddress, amount) {
     // Check SOL balance
     const balance = await solChain.getBalance(wallet.publicKey.toString());
     const requiredAmount = parseFloat(amount) + 0.01; // Add buffer for fees
-    
+
     if (parseFloat(balance) < requiredAmount) {
       throw new Error(`Insufficient SOL balance. Required: ${requiredAmount} SOL, Available: ${balance} SOL`);
     }
@@ -1841,7 +1972,7 @@ async function executeSolSell(userId, userData, tokenAddress, amount, type) {
     // Get token holdings
     const holdings = await solChain.getTokenHoldings(wallet.publicKey.toString());
     const tokenHolding = holdings.find(h => h.mint === tokenAddress);
-    
+
     if (!tokenHolding || tokenHolding.balance === 0) {
       throw new Error('No tokens found in wallet to sell');
     }
@@ -2275,7 +2406,7 @@ Please send a valid SOL amount (e.g., 0.1)`,
 // SOL Buy Amount Selection
 async function showSolBuyAmountSelection(ctx, tokenAddress) {
   const shortId = storeTokenMapping(tokenAddress);
-  
+
   const keyboard = [
     [
       { text: '0.1 SOL', callback_data: `sol_buy_amount_0.1_${shortId}` },
@@ -2305,7 +2436,7 @@ Select the amount of SOL to spend:`,
 // SOL Sell Amount Selection
 async function showSolSellAmountSelection(ctx, tokenAddress) {
   const shortId = storeTokenMapping(tokenAddress);
-  
+
   const keyboard = [
     [
       { text: '25%', callback_data: `sol_sell_percentage_25_${shortId}` },
