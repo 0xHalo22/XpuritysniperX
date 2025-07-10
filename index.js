@@ -268,6 +268,80 @@ async function getSnipeStatistics(userId) {
   }
 }
 
+// ====================================================================
+// MESSAGE INPUT HANDLERS FOR SOL FLOWS
+// ====================================================================
+
+// Handle text messages for SOL flows
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const message = ctx.message.text.trim();
+  const userState = userStates.get(userId);
+
+  if (!userState) return;
+
+  try {
+    // Handle SOL token address input
+    if (userState.action === 'sol_token_address') {
+      // Validate SOL token address
+      if (!solChain.isValidAddress(message)) {
+        await ctx.reply('❌ Invalid SOL token address. Please send a valid SPL token mint address.');
+        return;
+      }
+
+      // Clear user state
+      userStates.delete(userId);
+
+      // Show amount selection for this token
+      await showSolBuyAmountSelection(ctx, message);
+      return;
+    }
+
+    // Handle SOL custom amount input (buy)
+    if (userState.action === 'sol_custom_amount') {
+      const amount = parseFloat(message);
+      
+      if (isNaN(amount) || amount <= 0 || amount > 100) {
+        await ctx.reply('❌ Invalid amount. Please enter a number between 0.001 and 100 SOL.');
+        return;
+      }
+
+      const tokenAddress = userState.tokenAddress;
+      
+      // Clear user state
+      userStates.delete(userId);
+
+      // Show buy review
+      await showSolBuyReview(ctx, tokenAddress, amount.toString());
+      return;
+    }
+
+    // Handle SOL sell custom amount input
+    if (userState.action === 'sol_sell_custom_amount') {
+      const amount = parseFloat(message);
+      
+      if (isNaN(amount) || amount <= 0) {
+        await ctx.reply('❌ Invalid amount. Please enter a positive number.');
+        return;
+      }
+
+      const tokenAddress = userState.tokenAddress;
+      
+      // Clear user state  
+      userStates.delete(userId);
+
+      // Show sell review
+      await showSolSellReview(ctx, tokenAddress, amount.toString(), 'custom');
+      return;
+    }
+
+  } catch (error) {
+    console.log(`Error handling SOL message input: ${error.message}`);
+    userStates.delete(userId);
+    await ctx.reply('❌ An error occurred. Please try again.');
+  }
+});
+
 // Configure logging
 const logger = winston.createLogger({
   level: 'info',
@@ -1024,6 +1098,369 @@ ${error.message}`,
     );
   }
 });
+
+// ====================================================================
+// SOL BUY FLOW HANDLERS - IMPLEMENTING MISSING FUNCTIONS
+// ====================================================================
+
+// SOL Buy Amount Selection - Shows amount buttons after token address input
+async function showSolBuyAmountSelection(ctx, tokenMint) {
+  const userId = ctx.from.id.toString();
+  
+  try {
+    const userData = await loadUserData(userId);
+    const walletAddress = await getSolWalletAddress(userId, userData);
+    const balance = await solChain.getBalance(walletAddress);
+
+    // Get token info
+    const tokenInfo = await solChain.getTokenInfo(tokenMint);
+    
+    const keyboard = [
+      [
+        { text: '💎 0.1 SOL', callback_data: `sol_buy_amount_${tokenMint}_0.1` },
+        { text: '💎 0.25 SOL', callback_data: `sol_buy_amount_${tokenMint}_0.25` }
+      ],
+      [
+        { text: '💎 0.5 SOL', callback_data: `sol_buy_amount_${tokenMint}_0.5` },
+        { text: '💎 1.0 SOL', callback_data: `sol_buy_amount_${tokenMint}_1.0` }
+      ],
+      [
+        { text: '💎 2.0 SOL', callback_data: `sol_buy_amount_${tokenMint}_2.0` },
+        { text: '💎 5.0 SOL', callback_data: `sol_buy_amount_${tokenMint}_5.0` }
+      ],
+      [{ text: '✏️ Custom Amount', callback_data: `sol_buy_custom_${tokenMint}` }],
+      [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+    ];
+
+    await ctx.editMessageText(
+      `🟣 **SOL BUY TOKEN**
+
+**Token:** ${tokenMint.slice(0, 8)}...${tokenMint.slice(-4)}
+**Your SOL Balance:** ${balance} SOL
+
+Select the amount of SOL to spend:`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error showing SOL buy amount selection:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading token information**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'sol_buy' }],
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// SOL Buy Review - Shows final confirmation before execution
+async function showSolBuyReview(ctx, tokenMint, amount) {
+  const userId = ctx.from.id.toString();
+  
+  try {
+    await ctx.editMessageText('⏳ **Getting swap quote...**\n\nCalculating best route via Jupiter...');
+
+    const userData = await loadUserData(userId);
+    
+    // Get swap quote
+    const quote = await solChain.getSwapQuote('sol', tokenMint, amount);
+    
+    // Calculate fees
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const feeCalculation = solChain.calculateFee(amount, feePercent);
+
+    const keyboard = [
+      [{ text: '✅ Confirm Purchase', callback_data: `sol_buy_execute_${tokenMint}_${amount}` }],
+      [{ text: '🔙 Change Amount', callback_data: `sol_buy_retry_${tokenMint}` }],
+      [{ text: '❌ Cancel', callback_data: 'chain_sol' }]
+    ];
+
+    await ctx.editMessageText(
+      `🟣 **CONFIRM SOL PURCHASE**
+
+**Token:** ${tokenMint.slice(0, 8)}...${tokenMint.slice(-4)}
+
+**Purchase Details:**
+💰 SOL Amount: ${amount} SOL
+📈 Tokens Expected: ~${parseFloat(quote.amountOut).toFixed(6)}
+💸 Service Fee: ${feeCalculation.feeAmount} SOL (${feePercent}%)
+💎 Net Trade Amount: ${feeCalculation.netAmount} SOL
+
+**Total Cost:** ${amount} SOL
+
+⚠️ **Important**: This will execute immediately!`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error showing SOL buy review:', error);
+    await ctx.editMessageText(
+      `❌ **Error getting swap quote**
+
+${error.message}
+
+Please try a different amount or token.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: `sol_buy_retry_${tokenMint}` }],
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// SOL Buy Retry Handler
+bot.action(/^sol_buy_retry_(.+)$/, async (ctx) => {
+  const tokenMint = ctx.match[1];
+  await showSolBuyAmountSelection(ctx, tokenMint);
+});
+
+// ====================================================================
+// SOL SELL FLOW HANDLERS - IMPLEMENTING MISSING FUNCTIONS  
+// ====================================================================
+
+// SOL Token Holdings - Shows user's SPL tokens for selling
+async function showSolTokenHoldings(ctx, userId) {
+  try {
+    const userData = await loadUserData(userId);
+    const walletAddress = await getSolWalletAddress(userId, userData);
+    
+    await ctx.editMessageText('⏳ **Loading your SPL tokens...**\n\nScanning wallet for tokens...');
+    
+    const tokenHoldings = await solChain.getTokenHoldings(walletAddress);
+    
+    if (tokenHoldings.length === 0) {
+      await ctx.editMessageText(
+        `🟣 **SOL SELL TOKEN**
+
+❌ No SPL tokens found in your wallet.
+
+Buy some tokens first to start selling!`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '💰 Buy Tokens', callback_data: 'sol_buy' }],
+              [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    // Create buttons for each token (limit to 10 for UI space)
+    const keyboard = [];
+    const visibleTokens = tokenHoldings.slice(0, 10);
+    
+    for (const token of visibleTokens) {
+      const displayName = `${token.mint.slice(0, 6)}...${token.mint.slice(-4)}`;
+      const balance = token.balance.toFixed(6);
+      
+      keyboard.push([{
+        text: `🪙 ${displayName} (${balance})`,
+        callback_data: `sol_sell_token_${token.mint}`
+      }]);
+    }
+
+    keyboard.push([{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]);
+
+    let message = `🟣 **SOL SELL TOKEN**
+
+**Your SPL Tokens:**
+
+Select a token to sell:`;
+
+    if (tokenHoldings.length > 10) {
+      message += `\n\n*Showing first 10 tokens*`;
+    }
+
+    await ctx.editMessageText(message, {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    });
+
+  } catch (error) {
+    console.log('Error loading SOL token holdings:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading token holdings**
+
+${error.message}
+
+Please check your wallet connection.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+          ]]
+        }
+      }
+    );
+  }
+}
+
+// SOL Sell Token Selection Handler
+bot.action(/^sol_sell_token_(.+)$/, async (ctx) => {
+  const tokenMint = ctx.match[1];
+  await showSolSellAmountSelection(ctx, tokenMint);
+});
+
+// SOL Sell Amount Selection - Shows percentage buttons for selling
+async function showSolSellAmountSelection(ctx, tokenMint) {
+  const userId = ctx.from.id.toString();
+  
+  try {
+    const userData = await loadUserData(userId);
+    const walletAddress = await getSolWalletAddress(userId, userData);
+    
+    // Get token balance
+    const tokenHoldings = await solChain.getTokenHoldings(walletAddress);
+    const tokenHolding = tokenHoldings.find(t => t.mint === tokenMint);
+    
+    if (!tokenHolding) {
+      throw new Error('Token not found in wallet');
+    }
+
+    const keyboard = [
+      [
+        { text: '📈 25%', callback_data: `sol_sell_p_${tokenMint}_25` },
+        { text: '📈 50%', callback_data: `sol_sell_p_${tokenMint}_50` }
+      ],
+      [
+        { text: '📈 75%', callback_data: `sol_sell_p_${tokenMint}_75` },
+        { text: '📈 100%', callback_data: `sol_sell_p_${tokenMint}_100` }
+      ],
+      [{ text: '✏️ Custom Amount', callback_data: `sol_sell_c_${tokenMint}` }],
+      [{ text: '🔙 Back to Tokens', callback_data: 'sol_sell' }]
+    ];
+
+    await ctx.editMessageText(
+      `🟣 **SOL SELL TOKEN**
+
+**Token:** ${tokenMint.slice(0, 8)}...${tokenMint.slice(-4)}
+**Balance:** ${tokenHolding.balance.toFixed(6)} tokens
+
+Select percentage to sell:`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error showing SOL sell amount selection:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading token balance**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'sol_sell' }],
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// SOL Sell Review - Shows final confirmation before execution
+async function showSolSellReview(ctx, tokenMint, amount, amountType) {
+  const userId = ctx.from.id.toString();
+  
+  try {
+    await ctx.editMessageText('⏳ **Getting sell quote...**\n\nCalculating best route via Jupiter...');
+
+    const userData = await loadUserData(userId);
+    const walletAddress = await getSolWalletAddress(userId, userData);
+    
+    // Get token holdings
+    const tokenHoldings = await solChain.getTokenHoldings(walletAddress);
+    const tokenHolding = tokenHoldings.find(t => t.mint === tokenMint);
+    
+    if (!tokenHolding) {
+      throw new Error('Token not found in wallet');
+    }
+
+    // Calculate sell amount
+    let sellAmount;
+    if (amountType === 'percent') {
+      sellAmount = tokenHolding.balance * (parseInt(amount) / 100);
+    } else {
+      sellAmount = parseFloat(amount);
+    }
+
+    // Get swap quote
+    const quote = await solChain.getSwapQuote(tokenMint, 'sol', sellAmount.toString());
+    
+    // Calculate fees
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const solReceived = parseFloat(quote.amountOut);
+    const feeCalculation = solChain.calculateFee(solReceived, feePercent);
+
+    const keyboard = [
+      [{ text: '✅ Confirm Sale', callback_data: `sol_sell_exec_${tokenMint}_${amount}_${amountType}` }],
+      [{ text: '🔙 Change Amount', callback_data: `sol_sell_retry_${tokenMint}` }],
+      [{ text: '❌ Cancel', callback_data: 'chain_sol' }]
+    ];
+
+    await ctx.editMessageText(
+      `🟣 **CONFIRM SOL SALE**
+
+**Token:** ${tokenMint.slice(0, 8)}...${tokenMint.slice(-4)}
+
+**Sale Details:**
+🪙 Tokens to Sell: ${sellAmount.toFixed(6)}
+💰 SOL Expected: ~${solReceived.toFixed(6)} SOL
+💸 Service Fee: ${feeCalculation.feeAmount} SOL (${feePercent}%)
+💎 Net SOL Received: ${feeCalculation.netAmount} SOL
+
+⚠️ **Important**: This will execute immediately!`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error showing SOL sell review:', error);
+    await ctx.editMessageText(
+      `❌ **Error getting sell quote**
+
+${error.message}
+
+Please try a different amount.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: `sol_sell_token_${tokenMint}` }],
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        }
+      }
+    );
+  }
+}
 
 // ====================================================================
 // MISSING SOL BUY/SELL CALLBACK HANDLERS - CRITICAL FOR SOL OPERATION
