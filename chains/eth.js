@@ -1,9 +1,16 @@
 // ====================================================================
-// ETHEREUM CHAIN HANDLER - FOCUSED FEE COLLECTION FIX
-// Part 1: Core Infrastructure + FIXED Fee Collection System
+// ETHEREUM CHAIN HANDLER - WITH PHASE 3 RISK MANAGEMENT INTEGRATION
+// Enhanced with complete risk analysis, honeypot detection, and MEV protection
 // ====================================================================
 
 const { ethers } = require('ethers');
+const {
+  analyzeTokenSafety,
+  analyzeTransactionSafety,
+  checkUserProtection,
+  applyMEVProtection,
+  generateRiskReport
+} = require('../utils/riskAnalysis');
 
 class EthChain {
   constructor() {
@@ -795,12 +802,72 @@ class EthChain {
     }
 
     // ====================================================================
-    // 🚀 ENHANCED TOKEN SWAP EXECUTION WITH RETRY LOGIC & MEV PROTECTION
+    // 🚀 ENHANCED TOKEN SWAP EXECUTION WITH PHASE 3 RISK MANAGEMENT
+    // Complete integration of token safety, MEV protection, and user protection
     // ====================================================================
 
     async executeTokenSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3, options = {}) {
     const maxRetries = options.maxRetries || 3;
     const isSnipeMode = options.snipeMode || false;
+    const userId = options.userId || 'unknown';
+
+    // PHASE 3: Pre-execution risk analysis
+    console.log(`🛡️ Phase 3: Conducting comprehensive risk analysis...`);
+    
+    try {
+      const provider = await this.getProvider();
+      
+      // Step 1: Analyze token safety (if not ETH/WETH)
+      let tokenSafetyAnalysis = null;
+      if (tokenOut !== this.contracts.WETH && tokenOut !== this.tokens.WETH && 
+          tokenIn !== this.contracts.WETH && tokenIn !== this.tokens.WETH) {
+        
+        const targetToken = tokenOut === this.contracts.WETH ? tokenIn : tokenOut;
+        console.log(`🔍 Analyzing token safety: ${targetToken}`);
+        
+        tokenSafetyAnalysis = await analyzeTokenSafety(targetToken, provider);
+        
+        if (!tokenSafetyAnalysis.safeToTrade) {
+          throw new Error(`🚨 TOKEN REJECTED: ${tokenSafetyAnalysis.riskFactors.join(', ')}`);
+        }
+        
+        if (tokenSafetyAnalysis.overallRisk > 6) {
+          console.log(`⚠️ HIGH RISK TOKEN DETECTED! Risk score: ${tokenSafetyAnalysis.overallRisk}/10`);
+          console.log(`🔥 Risk factors: ${tokenSafetyAnalysis.riskFactors.join(', ')}`);
+          
+          // Adjust trading parameters for high-risk tokens
+          slippagePercent = Math.max(slippagePercent, 25); // Minimum 25% slippage for risky tokens
+          console.log(`🔧 Adjusted slippage to ${slippagePercent}% for high-risk token`);
+        }
+      }
+
+      // Step 2: Check user protection limits
+      const userProtection = await checkUserProtection(userId, {
+        amount: ethers.utils.formatEther(amountIn),
+        slippage: slippagePercent,
+        tokenIn,
+        tokenOut
+      });
+
+      if (!userProtection.allowed) {
+        throw new Error(`🚨 USER PROTECTION: ${userProtection.warnings.join(', ')}`);
+      }
+
+      // Apply user protection adjustments
+      if (userProtection.adjustments.recommendedSlippage) {
+        slippagePercent = Math.max(slippagePercent, userProtection.adjustments.recommendedSlippage);
+        console.log(`🛡️ User protection: adjusted slippage to ${slippagePercent}%`);
+      }
+
+      if (userProtection.cooldownNeeded) {
+        console.log(`⏰ User protection: recommended cooldown period`);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second cooldown
+      }
+
+    } catch (riskError) {
+      console.log(`❌ Risk analysis failed: ${riskError.message}`);
+      throw riskError;
+    }
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -809,7 +876,7 @@ class EthChain {
         const provider = await this.getProvider();
         const wallet = new ethers.Wallet(privateKey, provider);
 
-        // ENHANCEMENT 1: Dynamic slippage based on attempt
+        // ENHANCEMENT 1: Dynamic slippage based on attempt + Phase 3 analysis
         let dynamicSlippage = slippagePercent;
         if (isSnipeMode && attempt > 1) {
           dynamicSlippage = Math.min(slippagePercent + (attempt * 5), 50); // Increase slippage on retries
@@ -857,14 +924,45 @@ class EthChain {
         transaction.gasLimit = gasEstimate.gasLimit;
         transaction.gasPrice = gasEstimate.gasPrice;
 
-        // ENHANCEMENT 3: MEV Protection with random nonce offset
-        if (isSnipeMode) {
-          const baseNonce = await provider.getTransactionCount(wallet.address, 'latest');
-          // Add small random offset to avoid MEV front-running patterns
-          const nonceOffset = Math.floor(Math.random() * 3); // 0-2 offset
-          transaction.nonce = baseNonce + nonceOffset;
-          console.log(`🛡️ MEV protection: nonce ${transaction.nonce} (base: ${baseNonce})`);
+        // PHASE 3: Enhanced MEV Protection and Transaction Safety
+        console.log(`🛡️ Applying Phase 3 MEV protection...`);
+        
+        // Build initial transaction parameters
+        let transactionParams = {
+          ...transaction,
+          deadline: Math.floor(Date.now() / 1000) + 60 * 20 // 20 minutes
+        };
+
+        // Apply comprehensive MEV protection
+        transactionParams = applyMEVProtection(transactionParams);
+
+        // Analyze transaction safety
+        const transactionSafety = await analyzeTransactionSafety(transactionParams, provider);
+        
+        if (!transactionSafety.safe) {
+          console.log(`⚠️ Transaction safety warning: ${transactionSafety.warnings.join(', ')}`);
+          
+          if (transactionSafety.riskLevel === 'HIGH' && !isSnipeMode) {
+            throw new Error(`🚨 TRANSACTION REJECTED: ${transactionSafety.warnings.join(', ')}`);
+          }
         }
+
+        // Apply MEV protection adjustments
+        if (transactionParams.mevDelay && isSnipeMode) {
+          console.log(`⏰ MEV protection delay: ${transactionParams.mevDelay}ms`);
+          await new Promise(resolve => setTimeout(resolve, transactionParams.mevDelay));
+        }
+
+        // Enhanced nonce management with MEV protection
+        const baseNonce = await provider.getTransactionCount(wallet.address, 'latest');
+        const nonceOffset = transactionParams.nonceOffset || (isSnipeMode ? Math.floor(Math.random() * 3) : 0);
+        transaction.nonce = baseNonce + nonceOffset;
+        
+        console.log(`🛡️ Enhanced MEV protection: nonce ${transaction.nonce} (base: ${baseNonce}, offset: ${nonceOffset})`);
+        console.log(`📊 Transaction safety: ${transactionSafety.riskLevel} risk`);
+
+        // Apply final transaction parameters
+        Object.assign(transaction, transactionParams);
 
         console.log(`⛽ Gas: ${transaction.gasLimit.toString()} @ ${ethers.utils.formatUnits(transaction.gasPrice, 'gwei')} gwei`);
 
@@ -886,6 +984,31 @@ class EthChain {
 
         const txResponse = await Promise.race([txPromise, timeoutPromise]);
         console.log(`✅ Swap executed! Hash: ${txResponse.hash} (attempt ${attempt})`);
+
+        // PHASE 3: Post-execution risk reporting
+        if (options.generateRiskReport) {
+          try {
+            const riskReport = generateRiskReport(tokenOut, {
+              tokenSafety: tokenSafetyAnalysis,
+              transactionSafety: transactionSafety,
+              userProtection: userProtection
+            });
+            
+            console.log(`📊 Risk Report Generated:`);
+            console.log(`   Overall Risk: ${riskReport.summary.overallRisk}/10`);
+            console.log(`   Recommendation: ${riskReport.summary.recommendation}`);
+            
+            if (riskReport.actions.length > 0) {
+              console.log(`   Suggested Actions: ${riskReport.actions.join(', ')}`);
+            }
+            
+            // Attach risk report to transaction response
+            txResponse.riskReport = riskReport;
+            
+          } catch (reportError) {
+            console.log(`⚠️ Risk report generation failed: ${reportError.message}`);
+          }
+        }
 
         return txResponse;
 
