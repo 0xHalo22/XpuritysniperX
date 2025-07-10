@@ -14,7 +14,7 @@
   "ethWallets": [
     "7d2aca93dc0fc54d28ef6f87740049be:39cba12e70a97fdd1be3b01be9091a2f9881eb108e62dc17415a346ca33b207c9cae89137880b23550bf066d9a38946564435194dcbf86303d083e5d60da9a22615d3ee2a64f1c17453e183779a3e83b"
   ],
-  "lastActive": 1752190277284,
+  "lastActive": 1752190562618,
   "solWallets": [],
   "snipeConfig": {
     "active": false,
@@ -77,6 +77,35 @@
       "amount": "0.00099",
       "tokenSymbol": "RNS",
       "timestamp": 1752190277284
+    },
+    {
+      "type": "buy",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "amount": "0.001",
+      "tradeAmount": "0.00099",
+      "feeAmount": "0.00001",
+      "txHash": "0xb1bc7e60bc629b2742db6e0a66f8e722f327f21dbcbb3b9d62cc442a1ae76a2b",
+      "status": "sent",
+      "timestamp": 1752190534233,
+      "chain": "ethereum"
+    },
+    {
+      "txHash": "0xb1bc7e60bc629b2742db6e0a66f8e722f327f21dbcbb3b9d62cc442a1ae76a2b",
+      "type": "buy",
+      "status": "confirmed",
+      "blockNumber": 22892099,
+      "gasUsed": "104421",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "amount": "0.00099",
+      "tokenSymbol": "RNS",
+      "timestamp": 1752190538626
+    },
+    {
+      "txHash": "0x75660825031adf41a74757472d3ca7d78c17df1e6452ce7605bebde3454dfeaf",
+      "type": "fee",
+      "status": "sent",
+      "amount": "0.00001",
+      "timestamp": 1752190562618
     }
   ],
   "mirrorTargets": [],
