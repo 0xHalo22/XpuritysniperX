@@ -304,15 +304,25 @@ async function startBot() {
 
     // Start the bot
     console.log('🤖 Starting Telegram bot...');
-    await bot.launch({
-      polling: {
-        timeout: 30,
-        limit: 100,
-        allowedUpdates: ['message', 'callback_query']
-      }
-    });
+    
+    // Use simple launch without specific polling config first
+    await bot.launch();
+    
     console.log('✅ Bot is running and ready to receive messages!');
     console.log('📱 Send /start to the bot on Telegram to test');
+    
+    // Keep the process alive
+    process.once('SIGINT', () => {
+      console.log('🛑 Received SIGINT, shutting down gracefully...');
+      cleanupSnipeMonitors();
+      bot.stop('SIGINT');
+    });
+
+    process.once('SIGTERM', () => {
+      console.log('🛑 Received SIGTERM, shutting down gracefully...');
+      cleanupSnipeMonitors();
+      bot.stop('SIGTERM');
+    });
 
     // Set bot commands for UI
     await bot.telegram.setMyCommands([
@@ -336,20 +346,7 @@ bot.catch((err, ctx) => {
   console.log(`❌ Bot error for ${ctx.updateType}:`, err);
 });
 
-// Enable graceful stop
-process.once('SIGINT', () => {
-  console.log('🛑 Received SIGINT, shutting down gracefully...');
-  cleanupSnipeMonitors();
-  bot.stop('SIGINT');
-  process.exit(0);
-});
-
-process.once('SIGTERM', () => {
-  console.log('🛑 Received SIGTERM, shutting down gracefully...');
-  cleanupSnipeMonitors();
-  bot.stop('SIGTERM');
-  process.exit(0);
-});
+// Signal handlers are now inside startBot() function to prevent conflicts
 
 // Helper function to get human-readable strategy display names
 function getStrategyDisplayName(strategy) {
