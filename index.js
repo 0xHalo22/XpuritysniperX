@@ -2191,12 +2191,5 @@ Your tokens are safe - no transaction was completed.`,
 });
 
 // ====================================================================
-// START THE BOT - CALL AFTER ALL HANDLERS ARE REGISTERED
-// ====================================================================
-
-console.log('🚀 All handlers registered, starting bot...');
-startBot();
-
-// ====================================================================
 // MISSING SOL BUY/SELL CALLBACK HANDLERS - CRITICAL FOR SOL OPERATION
 // ====================================================================
