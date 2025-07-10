@@ -1,0 +1,264 @@
+# 📄 Purity Sniper Bot - User-Facing PRD v1.0
+
+**Project**: @puritysniper_bot  
+**Tagline**: "Professional ETH Trading with Precision Sniping"  
+**Target**: Serious crypto traders who want speed, control, and transparency
+
+---
+
+## 🎯 **What is Purity Sniper Bot?**
+
+Purity Sniper Bot is a **professional-grade Telegram trading bot** that lets you execute lightning-fast ETH trades with **intentional, targeted sniping** capabilities. Unlike other bots that blindly snipe random pairs, Purity focuses on **precision trading** - you choose exactly which tokens to target.
+
+**Key Philosophy**: Quality over quantity. Strategic sniping over spray-and-pray.
+
+---
+
+## 🚀 **Core Features**
+
+### 💰 **ETH Trading Engine**
+- **Buy Any Token**: Instant Uniswap purchases with smart routing
+- **Sell with Precision**: 25%, 50%, 75%, or 100% selling options
+- **Real-Time Pricing**: Live token prices and gas estimates
+- **Portfolio Tracking**: View all your holdings in one place
+
+### 🎯 **Intentional Sniping System**
+**The key differentiator**: You control what gets sniped.
+
+```
+🎯 Snipe Configuration:
+┌─────────────────────────────────────┐
+│ Target Token: [Paste Contract Address] │
+│ Strategy: [First Liquidity] [New Listing] │
+│ Amount: [0.1 ETH] [Custom Amount]      │
+│ Slippage: [5%] [10%] [15%] [Custom]   │
+│ Max Gas: [50 GWEI] [Aggressive]       │
+│ Status: [🟢 Active] [⏸️ Paused]         │
+└─────────────────────────────────────┘
+```
+
+**How Intentional Sniping Works:**
+1. **You Research**: Find promising tokens through your own analysis
+2. **You Target**: Paste the contract address into the bot
+3. **You Configure**: Set your buy amount, slippage, and gas preferences
+4. **Bot Monitors**: Watches for your specific token's liquidity events
+5. **Instant Execution**: Buys within 1-2 blocks of liquidity being added
+
+**Supported Trigger Events:**
+- 🔥 **First Liquidity Addition**: Snipe when initial LP is added
+- 📈 **Trading Goes Live**: Execute when trading becomes enabled
+- 💧 **Liquidity Threshold**: Buy when liquidity reaches your minimum
+- ⏰ **Time-Based**: Execute at a specific timestamp
+
+### 🛡️ **Security & Control**
+- **Your Keys, Your Control**: Import your own wallets with military-grade encryption
+- **Rate Limiting**: Built-in protections against spam and abuse
+- **Gas Optimization**: Smart gas estimation prevents failed transactions
+- **Multi-Wallet Support**: Manage multiple trading wallets seamlessly
+
+### 📊 **Analytics & Tracking**
+- **Transaction History**: Complete record of all trades and snipes
+- **Success Metrics**: Track your snipe success rate and profitability
+- **Real-Time Updates**: Live notifications for successful trades
+- **Export Data**: Download transaction history for tax purposes
+
+---
+
+## 💰 **Transparent Pricing**
+
+### **Simple Fee Structure**
+- **1% service fee** on all successful trades (buy/sell/snipe)
+- **No subscription fees** - pay only when you trade
+- **No hidden costs** - gas fees are separate and clearly displayed
+
+### **Fee Collection Process**
+1. You initiate a trade worth 1 ETH
+2. Bot automatically deducts 0.01 ETH service fee
+3. Remaining 0.99 ETH executes your trade
+4. **Your trade never fails due to fee collection issues**
+
+### **Premium Features (Coming Soon)**
+- **0.5% reduced fees** for high-volume traders
+- **Private RPC access** for even faster execution
+- **Advanced analytics** and performance insights
+- **Priority support** and early feature access
+
+---
+
+## 🎮 **User Experience**
+
+### **Button-Only Interface**
+No complicated commands to remember - everything is done through intuitive buttons.
+
+```
+Main Menu:
+🪙 ETH Trading
+📊 Portfolio  
+🎯 Snipe Setup
+⚙️ Settings
+
+ETH Trading Menu:
+💰 Buy Token
+📈 Sell Holdings
+🔗 Import Wallet
+💳 View Balance
+```
+
+### **Smart Workflows**
+**Buying Tokens:**
+1. Tap "Buy Token" → Paste token address
+2. Choose amount → Review trade details
+3. Confirm → Transaction executes in 15-30 seconds
+
+**Setting Up Snipes:**
+1. Tap "Snipe Setup" → Paste target contract address
+2. Configure amount and strategy → Set trigger conditions
+3. Activate → Bot monitors 24/7 until triggered
+
+**Managing Portfolio:**
+1. Tap "Portfolio" → See all holdings with live values
+2. Select token → Choose sell percentage
+3. Execute → Instant sale with profit/loss tracking
+
+---
+
+## 🛠️ **Technical Excellence**
+
+### **Infrastructure**
+- **Enterprise-Grade RPC**: Alchemy Pro with 99.9% uptime
+- **Multi-Provider Redundancy**: Automatic failover if primary RPC fails
+- **Optimized Gas**: Smart gas pricing prevents stuck transactions
+- **Real-Time Monitoring**: WebSocket connections for instant execution
+
+### **Security Features**
+- **AES-256 Encryption**: Military-grade wallet storage
+- **Rate Limiting**: Prevents abuse and protects user accounts
+- **Input Validation**: All addresses and amounts are verified
+- **Error Recovery**: Graceful handling of network issues
+
+### **Performance Metrics**
+- **Sub-30 Second Trades**: Most transactions complete in 15-20 seconds
+- **<2 Block Snipe Speed**: Execute within 1-2 blocks of trigger event
+- **99%+ Success Rate**: Robust error handling ensures reliability
+- **24/7 Monitoring**: Bot never sleeps, never misses opportunities
+
+---
+
+## 🎯 **Target Use Cases**
+
+### **For Day Traders**
+- Quick in-and-out trades on ETH tokens
+- Real-time portfolio management
+- Fast execution without CEX delays
+
+### **For Alpha Hunters**
+- Intentional sniping of researched tokens
+- First-mover advantage on new launches
+- Precision timing for maximum profits
+
+### **For Portfolio Managers**
+- Multi-wallet organization
+- Percentage-based position sizing
+- Complete transaction history for tracking
+
+### **For Busy Professionals**
+- Set-and-forget snipe configurations
+- Mobile trading from anywhere
+- No need to monitor markets 24/7
+
+---
+
+## 🚀 **Getting Started**
+
+### **Step 1: Access the Bot**
+- Search for `@puritysniper_bot` on Telegram
+- Start the bot with `/start`
+- No registration required
+
+### **Step 2: Import Your Wallet**
+- Tap "ETH Trading" → "Import Wallet"
+- Paste your private key (encrypted and stored securely)
+- Confirm wallet address and view balance
+
+### **Step 3: Start Trading**
+- **For Immediate Trading**: Use "Buy Token" or "Sell Holdings"
+- **For Sniping**: Use "Snipe Setup" to configure target tokens
+
+### **Step 4: Monitor & Manage**
+- Check "Portfolio" for holdings overview
+- Review transaction history
+- Adjust snipe configurations as needed
+
+---
+
+## ⚠️ **Risk Disclaimers**
+
+### **Trading Risks**
+- Cryptocurrency trading involves substantial risk of loss
+- Past performance does not guarantee future results
+- Only trade with money you can afford to lose
+- Bot execution speed doesn't guarantee profitable trades
+
+### **Technical Risks**
+- Network congestion may delay transactions
+- Smart contract risks exist for all tokens
+- Gas price volatility affects transaction costs
+- User responsible for proper wallet security
+
+### **Sniping-Specific Risks**
+- Target tokens may not reach trigger conditions
+- High slippage possible during initial liquidity events
+- MEV bots and front-running competition exists
+- Rug pulls and honeypot tokens remain user responsibility
+
+---
+
+## 🎯 **Why Choose Purity Sniper Bot?**
+
+### **vs. Manual Trading**
+- ⚡ **20x Faster Execution**: Sub-30 second trades vs minutes manually
+- 🎯 **Never Miss Opportunities**: 24/7 monitoring vs human limitations
+- 📊 **Better Record Keeping**: Automatic transaction tracking
+
+### **vs. Other Bots**
+- 🧠 **Intentional Sniping**: You choose targets vs random pair spam
+- 💎 **Professional Grade**: Enterprise infrastructure vs hobby projects
+- 🔒 **Your Keys**: Self-custody vs centralized control
+- 💰 **Transparent Fees**: Clear 1% vs hidden costs and markups
+
+### **vs. DEX Aggregators**
+- 🚀 **Speed Advantage**: Direct execution vs slower routing
+- 🎯 **Snipe Capabilities**: Automated monitoring vs manual watching
+- 📱 **Mobile First**: Telegram interface vs complex web UIs
+
+---
+
+## 🔮 **Roadmap**
+
+### **Phase 1: ETH Excellence** (Current)
+- Perfect ETH trading experience
+- Advanced intentional sniping
+- Professional-grade infrastructure
+
+### **Phase 2: Multi-Chain Expansion** (Q1 2025)
+- Solana integration with Jupiter routing
+- Cross-chain portfolio management
+- Unified trading interface
+
+### **Phase 3: Advanced Features** (Q2 2025)
+- Copy trading / mirror functionality
+- Stop-loss and take-profit orders
+- Advanced analytics dashboard
+- Premium subscription tiers
+
+### **Phase 4: Ecosystem Growth** (Q3 2025)
+- API access for developers
+- Community features and referrals
+- Institutional-grade features
+- White-label partnerships
+
+---
+
+**Ready to trade like a professional? Start with @puritysniper_bot today.** 🚀
+
+*Purity Sniper Bot - Where precision meets speed in crypto trading.*
