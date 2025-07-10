@@ -14,7 +14,7 @@
   "ethWallets": [
     "7d2aca93dc0fc54d28ef6f87740049be:39cba12e70a97fdd1be3b01be9091a2f9881eb108e62dc17415a346ca33b207c9cae89137880b23550bf066d9a38946564435194dcbf86303d083e5d60da9a22615d3ee2a64f1c17453e183779a3e83b"
   ],
-  "lastActive": 1752191463237,
+  "lastActive": 1752191672150,
   "solWallets": [],
   "snipeConfig": {
     "active": false,
@@ -201,6 +201,64 @@
       "tokenSymbol": "RNS",
       "amount": "75384431.75471137",
       "timestamp": 1752191463237
+    },
+    {
+      "type": "buy",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "amount": "0.01",
+      "tradeAmount": "0.0099",
+      "feeAmount": "0.0001",
+      "txHash": "0x8f46ff3e557d84d21fcf5e5a39ae5b2b090178401872b743e7882e3f521763bd",
+      "status": "sent",
+      "timestamp": 1752191588240,
+      "chain": "ethereum"
+    },
+    {
+      "txHash": "0x8f46ff3e557d84d21fcf5e5a39ae5b2b090178401872b743e7882e3f521763bd",
+      "type": "buy",
+      "status": "confirmed",
+      "blockNumber": 22892187,
+      "gasUsed": "104433",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "amount": "0.0099",
+      "tokenSymbol": "RNS",
+      "timestamp": 1752191596711
+    },
+    {
+      "txHash": "0xf4b3e81e753debedf353e6631c28e01c44cf28066ff119fd03c529b7b5a064c2",
+      "type": "fee",
+      "status": "sent",
+      "amount": "0.0001",
+      "timestamp": 1752191608735
+    },
+    {
+      "type": "sell",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "tokenSymbol": "RNS",
+      "amount": "752724983.4511094",
+      "percentage": 100,
+      "txHash": "0x240277356983f9c38f9d334c934f5b81aae19a4132d9fa9cf75e923ffc01afc5",
+      "status": "sent",
+      "timestamp": 1752191641176,
+      "chain": "ethereum"
+    },
+    {
+      "txHash": "0x240277356983f9c38f9d334c934f5b81aae19a4132d9fa9cf75e923ffc01afc5",
+      "type": "sell",
+      "status": "confirmed",
+      "blockNumber": 22892193,
+      "gasUsed": "115563",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "tokenSymbol": "RNS",
+      "amount": "752724983.4511094",
+      "timestamp": 1752191665738
+    },
+    {
+      "txHash": "0x16d6aefbb26d166c93031f989723ff4318949c1df977096c58ef8b97b290ce31",
+      "type": "fee",
+      "status": "sent",
+      "amount": "0.0000984078659392565",
+      "timestamp": 1752191672149
     }
   ],
   "mirrorTargets": [],
