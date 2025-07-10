@@ -769,47 +769,88 @@ ${error.message}`,
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id.toString();
   const userState = userStates.get(userId);
+  const messageText = ctx.message.text;
+
+  console.log(`📥 Text message: User ${userId}, Text length: ${messageText?.length}, Has state: ${!!userState}`);
 
   if (!userState) {
+    console.log(`ℹ️ No active state for user ${userId}, ignoring text message`);
     return; // No active state for this user
   }
 
-  console.log(`DEBUG: Processing text for user ${userId}, action: ${userState.action}`);
+  console.log(`🔄 Processing text for user ${userId}, action: ${userState.action}`);
 
   // Handle different actions based on user state
-  switch (userState.action) {
-    case 'wallet_import':
-      await handleWalletImport(ctx, userId);
-      break;
-    case 'token_address':
-      await handleTokenAddress(ctx, userId);
-      break;
-    case 'custom_amount':
-      await handleCustomAmount(ctx, userId, userState.tokenAddress);
-      break;
-    case 'sell_token_address':
-      await handleSellTokenAddress(ctx, userId);
-      break;
-    case 'sell_custom_amount':
-      await handleSellCustomAmount(ctx, userId, userState.tokenAddress);
-      break;
-    case 'sol_token_address':
-      await handleSolTokenAddress(ctx, userId);
-      break;
-    case 'sol_sell_token_address':
-      await handleSolSellTokenAddress(ctx, userId);
-      break;
-    case 'sol_custom_amount':
-      await handleSolCustomAmount(ctx, userId, userState.tokenAddress);
-      break;
-    case 'sol_wallet_import':
-      await handleSolWalletImport(ctx, userId);
-      break;
-    case 'sol_sell_custom_amount':
-      await handleSolSellCustomAmount(ctx, userId, userState.tokenAddress);
-      break;
-    default:
-      userStates.delete(userId); // Clear unknown state
+  try {
+    switch (userState.action) {
+      case 'wallet_import':
+        await handleWalletImport(ctx, userId);
+        break;
+      case 'token_address':
+        await handleTokenAddress(ctx, userId);
+        break;
+      case 'custom_amount':
+        await handleCustomAmount(ctx, userId, userState.tokenAddress);
+        break;
+      case 'sell_token_address':
+        await handleSellTokenAddress(ctx, userId);
+        break;
+      case 'sell_custom_amount':
+        await handleSellCustomAmount(ctx, userId, userState.tokenAddress);
+        break;
+      case 'sol_token_address':
+        await handleSolTokenAddress(ctx, userId);
+        break;
+      case 'sol_sell_token_address':
+        await handleSolSellTokenAddress(ctx, userId);
+        break;
+      case 'sol_custom_amount':
+        await handleSolCustomAmount(ctx, userId, userState.tokenAddress);
+        break;
+      case 'sol_wallet_import':
+        await handleSolWalletImport(ctx, userId);
+        break;
+      case 'sol_sell_custom_amount':
+        await handleSolSellCustomAmount(ctx, userId, userState.tokenAddress);
+        break;
+      default:
+        console.log(`⚠️ Unknown user state action: ${userState.action} for user ${userId}`);
+        userStates.delete(userId); // Clear unknown state
+    }
+    
+    console.log(`✅ Text processing completed for user ${userId}, action: ${userState.action}`);
+    
+  } catch (error) {
+    console.error(`❌ Text processing error for user ${userId}:`, {
+      action: userState.action,
+      error: error.message,
+      stack: error.stack
+    });
+    
+    logger.error('Text processing failed', {
+      userId,
+      action: userState.action,
+      error: error.message
+    });
+    
+    // Clear the user state to prevent stuck states
+    userStates.delete(userId);
+    
+    // Send error message to user
+    try {
+      await ctx.reply(
+        '❌ **Processing Error**\n\nSomething went wrong processing your message. Please try again from the main menu.',
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🏠 Main Menu', callback_data: 'main_menu' }
+            ]]
+          }
+        }
+      );
+    } catch (replyError) {
+      console.error('❌ Failed to send error reply:', replyError.message);
+    }
   }
 });
 
@@ -2522,9 +2563,28 @@ Ready to proceed?`,
 // Handle any callback query errors
 bot.on('callback_query', async (ctx, next) => {
   try {
+    const userId = ctx.from?.id;
+    const callbackData = ctx.callbackQuery?.data;
+    
+    console.log(`📥 Callback query: User ${userId}, Data: ${callbackData}`);
+    
     await next();
   } catch (error) {
-    console.log('Callback query error:', error);
+    const userId = ctx.from?.id;
+    const callbackData = ctx.callbackQuery?.data;
+    
+    console.error('❌ Callback query error:', {
+      userId,
+      callbackData,
+      error: error.message,
+      stack: error.stack
+    });
+    
+    logger.error('Callback query failed', {
+      userId,
+      callbackData,
+      error: error.message
+    });
 
     try {
       await ctx.answerCbQuery('❌ An error occurred. Please try again.');
@@ -2539,17 +2599,23 @@ bot.on('callback_query', async (ctx, next) => {
         }
       );
     } catch (editError) {
+      console.error('❌ Failed to edit message after error:', editError.message);
+      
       // If we can't edit, send a new message
-      await ctx.reply(
-        '❌ **Something went wrong**\n\nPlease try again or return to the main menu.',
-        {
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🏠 Main Menu', callback_data: 'main_menu' }
-            ]]
+      try {
+        await ctx.reply(
+          '❌ **Something went wrong**\n\nPlease try again or return to the main menu.',
+          {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🏠 Main Menu', callback_data: 'main_menu' }
+              ]]
+            }
           }
-        }
-      );
+        );
+      } catch (replyError) {
+        console.error('❌ Failed to send error message:', replyError.message);
+      }
     }
   }
 });
@@ -2568,25 +2634,137 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 
 // ====================================================================
+// ENVIRONMENT VALIDATION
+// ====================================================================
+
+function validateEnvironment() {
+  const required = ['BOT_TOKEN'];
+  const optional = ['ETH_RPC_URL', 'SOL_RPC_URL', 'TREASURY_WALLET'];
+  
+  console.log('🔍 Validating environment variables...');
+  
+  const missing = required.filter(key => !process.env[key]);
+  
+  if (missing.length > 0) {
+    console.error('❌ Missing required environment variables:', missing.join(', '));
+    console.error('💡 Please check your .env file and ensure these variables are set:');
+    missing.forEach(key => console.error(`   - ${key}`));
+    process.exit(1);
+  }
+  
+  console.log('✅ Required environment variables found');
+  
+  // Log optional variables status
+  optional.forEach(key => {
+    if (process.env[key]) {
+      console.log(`✅ ${key}: configured`);
+    } else {
+      console.log(`⚠️ ${key}: not set (optional)`);
+    }
+  });
+  
+  // Validate BOT_TOKEN format
+  const token = process.env.BOT_TOKEN;
+  if (!token.match(/^\d+:[A-Za-z0-9_-]{35}$/)) {
+    console.error('❌ BOT_TOKEN appears to have invalid format');
+    console.error('💡 Expected format: 123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefgh');
+    process.exit(1);
+  }
+  
+  console.log('✅ BOT_TOKEN format validation passed');
+}
+
+// ====================================================================
 // BOT STARTUP
 // ====================================================================
 
 // Start the bot
 async function startBot() {
   try {
+    console.log('🚀 Starting Purity Sniper Bot...');
+    
+    // Validate environment first
+    validateEnvironment();
+    
     // Create directories
+    console.log('📁 Creating required directories...');
     await fs.mkdir('logs', { recursive: true });
     await fs.mkdir(path.join('db', 'users'), { recursive: true });
+    console.log('✅ Directories created');
 
+    // Test bot token by getting bot info
+    console.log('🤖 Testing Telegram bot connection...');
+    try {
+      const botInfo = await bot.telegram.getMe();
+      console.log(`✅ Bot connected successfully: @${botInfo.username} (${botInfo.first_name})`);
+      console.log(`📋 Bot ID: ${botInfo.id}`);
+      console.log(`🔐 Can join groups: ${botInfo.can_join_groups}`);
+      console.log(`📨 Can read all group messages: ${botInfo.can_read_all_group_messages}`);
+    } catch (tokenError) {
+      console.error('❌ Bot token validation failed:', tokenError.message);
+      if (tokenError.message.includes('401')) {
+        console.error('💡 This usually means your BOT_TOKEN is invalid');
+        console.error('💡 Get a new token from @BotFather on Telegram');
+      }
+      process.exit(1);
+    }
+
+    // Launch the bot
+    console.log('🚀 Launching bot...');
     await bot.launch();
+    
     console.log('✅ Purity Sniper Bot is running!');
+    console.log('🔗 Bot is ready to receive messages');
     logger.info('Bot started successfully');
 
   } catch (error) {
     console.error('❌ Failed to start bot:', error);
+    console.error('📋 Error details:', {
+      message: error.message,
+      code: error.code,
+      response: error.response?.data || 'No response data'
+    });
+    
+    if (error.message.includes('409')) {
+      console.error('💡 Error 409: Another instance might be running. Stop other instances first.');
+    } else if (error.message.includes('404')) {
+      console.error('💡 Error 404: Bot token might be invalid or bot deleted.');
+    }
+    
     process.exit(1);
   }
 }
+
+// Global bot error handling
+bot.catch((err, ctx) => {
+  console.error('❌ Bot error:', {
+    error: err.message,
+    stack: err.stack,
+    userId: ctx?.from?.id,
+    updateType: ctx?.updateType,
+    callbackData: ctx?.callbackQuery?.data,
+    messageText: ctx?.message?.text?.substring(0, 100) // First 100 chars only
+  });
+  
+  logger.error('Bot error caught', {
+    error: err.message,
+    userId: ctx?.from?.id,
+    updateType: ctx?.updateType
+  });
+});
+
+// Global unhandled rejection handler
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  logger.error('Unhandled Rejection', { reason: reason?.message || reason });
+});
+
+// Global uncaught exception handler
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  logger.error('Uncaught Exception', { error: error.message, stack: error.stack });
+  process.exit(1);
+});
 
 // Graceful shutdown
 process.once('SIGINT', () => {
