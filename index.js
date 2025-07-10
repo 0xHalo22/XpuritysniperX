@@ -13,6 +13,7 @@ const ethers = require('ethers');
 const WalletManager = require('./wallets/manager');
 const EthChain = require('./chains/eth');
 const { checkRateLimit, updateRateLimit } = require('./utils/rateLimit');
+const { initialize: initializeSupabase, getUser, saveUser, addTransaction, getUserTransactions } = require('./utils/database');
 
 // ====================================================================
 // INITIALIZATION
@@ -286,47 +287,65 @@ const logger = winston.createLogger({
 
 async function loadUserData(userId) {
   try {
-    const userFile = path.join(__dirname, 'db', 'users', `${userId}.json`);
-    const data = await fs.readFile(userFile, 'utf8');
-    return JSON.parse(data);
+    // Try Supabase first
+    const userData = await getUser(userId);
+    
+    // Load recent transactions from Supabase
+    const transactions = await getUserTransactions(userId, 50);
+    userData.transactions = transactions;
+    
+    return userData;
   } catch (error) {
-    // Return default user data if file doesn't exist
-    return {
-      userId,
-      ethWallets: [],
-      solWallets: [],
-      activeEthWallet: 0,
-      activeSolWallet: 0,
-      transactions: [],
-      settings: {
-        slippage: 3,
-        gasMultiplier: 1.2,
-        snipeStrategy: 'new_pairs'
-      },
-      mirrorTargets: [],
-      premium: {
-        active: false,
-        expiresAt: 0
-      },
-      createdAt: Date.now(),
-      lastActive: Date.now()
-    };
+    console.log(`Error loading user data from Supabase: ${error.message}`);
+    
+    // Fallback to JSON file
+    try {
+      const userFile = path.join(__dirname, 'db', 'users', `${userId}.json`);
+      const data = await fs.readFile(userFile, 'utf8');
+      return JSON.parse(data);
+    } catch (fileError) {
+      // Return default user data if both fail
+      return {
+        userId,
+        ethWallets: [],
+        solWallets: [],
+        activeEthWallet: 0,
+        activeSolWallet: 0,
+        transactions: [],
+        settings: {
+          slippage: 3,
+          gasMultiplier: 1.2,
+          snipeStrategy: 'new_pairs'
+        },
+        mirrorTargets: [],
+        premium: {
+          active: false,
+          expiresAt: 0
+        },
+        createdAt: Date.now(),
+        lastActive: Date.now()
+      };
+    }
   }
 }
 
 async function saveUserData(userId, userData) {
   try {
-    const userDir = path.join(__dirname, 'db', 'users');
-    const userFile = path.join(userDir, `${userId}.json`);
-
-    // Ensure directory exists
-    await fs.mkdir(userDir, { recursive: true });
-
     // Update last active timestamp
     userData.lastActive = Date.now();
 
-    // Save user data
-    await fs.writeFile(userFile, JSON.stringify(userData, null, 2));
+    // Save to Supabase
+    await saveUser(userId, userData);
+
+    // Also save to JSON as backup
+    try {
+      const userDir = path.join(__dirname, 'db', 'users');
+      const userFile = path.join(userDir, `${userId}.json`);
+      await fs.mkdir(userDir, { recursive: true });
+      await fs.writeFile(userFile, JSON.stringify(userData, null, 2));
+    } catch (backupError) {
+      console.log(`Backup JSON save failed (non-critical): ${backupError.message}`);
+    }
 
     logger.info(`User data saved for ${userId}`);
   } catch (error) {
@@ -426,6 +445,7 @@ www.puritysniperbot.com`;
 bot.action('main_menu', showMainMenu);
 bot.action('chain_eth', showEthMenu);
 bot.action('chain_sol', showSolMenu);
+bot.action('statistics', showStatistics);
 
 // ETH Chain Menu
 async function showEthMenu(ctx) {
@@ -488,17 +508,19 @@ Choose your action:`,
 // Helper function to record transaction
 async function recordTransaction(userId, transactionData) {
   try {
-    const userData = await loadUserData(userId);
+    // Save to Supabase
+    await addTransaction(userId, transactionData);
 
+    // Also update user data (for in-memory transactions array)
+    const userData = await loadUserData(userId);
     if (!userData.transactions) {
       userData.transactions = [];
     }
-
     userData.transactions.push(transactionData);
 
-    // Keep only last 100 transactions
-    if (userData.transactions.length > 100) {
-      userData.transactions = userData.transactions.slice(-100);
+    // Keep only last 50 transactions in memory
+    if (userData.transactions.length > 50) {
+      userData.transactions = userData.transactions.slice(-50);
     }
 
     await saveUserData(userId, userData);
@@ -1975,6 +1997,73 @@ Please try importing your wallet again.`,
     );
   }
 }
+
+
+// Statistics handler
+async function showStatistics(ctx) {
+  try {
+    await ctx.editMessageText('⏳ **Loading statistics...**');
+
+    const { getSystemStats } = require('./utils/database');
+    const stats = await getSystemStats();
+
+    const userId = ctx.from.id.toString();
+    const userData = await loadUserData(userId);
+    
+    // User-specific stats
+    const userTransactions = userData.transactions || [];
+    const userSnipes = userTransactions.filter(tx => tx.type === 'snipe');
+    const userTrades = userTransactions.filter(tx => tx.type === 'buy' || tx.type === 'sell');
+    
+    const totalVolume = userTrades.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+    const totalFees = userTrades.reduce((sum, tx) => sum + parseFloat(tx.feeAmount || 0), 0);
+
+    await ctx.editMessageText(
+      `📊 **PURITY SNIPER STATISTICS**
+
+**🌐 SYSTEM STATS:**
+• Total Users: ${stats.totalUsers.toLocaleString()}
+• Active Users (24h): ${stats.activeUsers.toLocaleString()}
+• Total Revenue: ${stats.totalRevenue.toFixed(4)} ETH
+• System Uptime: ${Math.round((Date.now() - stats.uptime) / 1000 / 60)} minutes
+
+**👤 YOUR STATS:**
+• Total Transactions: ${userTransactions.length}
+• Trading Volume: ${totalVolume.toFixed(4)} ETH
+• Fees Paid: ${totalFees.toFixed(6)} ETH
+• Snipe Attempts: ${userSnipes.length}
+• Success Rate: ${userSnipes.length > 0 ? Math.round((userSnipes.filter(s => s.txHash && !s.failed).length / userSnipes.length) * 100) : 0}%
+
+**💰 REVENUE GENERATION:**
+• Fee Structure: 1.5% standard, 0.75% premium
+• 24/7 Automated Collection
+• Transparent & Secure`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Refresh Stats', callback_data: 'statistics' }],
+            [{ text: '🏠 Back to Home', callback_data: 'main_menu' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error loading statistics:', error);
+    await ctx.editMessageText(
+      '❌ **Error loading statistics**\n\nPlease try again later.',
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🏠 Back to Home', callback_data: 'main_menu' }
+          ]]
+        }
+      }
+    );
+  }
+}
+
 
 // Import ETH wallet handler
 bot.action('import_eth_wallet', async (ctx) => {
@@ -5134,6 +5223,14 @@ async function initializeBot() {
     await fs.mkdir(path.join(__dirname, 'db', 'users'), { recursive: true });
 
     logger.info('Bot directories initialized');
+
+    // Initialize Supabase
+    try {
+      await initializeSupabase();
+      console.log('✅ Supabase database connected');
+    } catch (supabaseError) {
+      console.log('⚠️ Supabase connection failed, using JSON fallback:', supabaseError.message);
+    }
 
     // Initialize sniping system
     console.log('🎯 Initializing sniping engine...');
