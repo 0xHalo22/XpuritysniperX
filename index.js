@@ -18,6 +18,37 @@ const MirrorTradingSystem = require('./utils/mirrorTrading');
 const { checkRateLimit, updateRateLimit } = require('./utils/rateLimit');
 const { initialize, getUser, saveUser, addTransaction, getUserTransactions } = require('./utils/database');
 
+// Configure logging - MOVED TO TOP TO FIX INITIALIZATION ORDER
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'purity-sniper-bot' },
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    })
+  ]
+});
+
+// Add file logging only if directories exist
+async function setupFileLogging() {
+  try {
+    await fs.mkdir('logs', { recursive: true });
+    logger.add(new winston.transports.File({ filename: 'logs/error.log', level: 'error' }));
+    logger.add(new winston.transports.File({ filename: 'logs/combined.log' }));
+    logger.info('✅ File logging enabled');
+  } catch (error) {
+    logger.warn('⚠️ File logging disabled - using console only');
+  }
+}
+
 // ====================================================================
 // INITIALIZATION
 // ====================================================================
@@ -261,8 +292,12 @@ async function startBot() {
 
     // Initialize database
     console.log('🗄️ Initializing database...');
-    await initialize();
-    console.log('✅ Database initialized');
+    try {
+      await initialize();
+      console.log('✅ Database initialized');
+    } catch (error) {
+      console.log('⚠️ Database initialization failed, using fallback:', error.message);
+    }
 
     // Start the bot
     console.log('🤖 Starting Telegram bot...');
@@ -766,23 +801,7 @@ async function handleMethodTokenInput(ctx, userId, input) {
   }
 }
 
-// Configure logging
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  defaultMeta: { service: 'purity-sniper-bot' },
-  transports: [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' }),
-    new winston.transports.Console({
-      format: winston.format.simple()
-    })
-  ]
-});
+// Logger configuration moved to top of file
 
 // ====================================================================
 // USER DATA MANAGEMENT
@@ -799,7 +818,7 @@ async function loadUserData(userId) {
 
     return userData;
   } catch (error) {
-    console.log(`Error loading user data from Replit Database: ${error.message}`);
+    console.log(`Database error for user ${userId}, using defaults:`, error.message);
 
     // Fallback to JSON file
     try {
