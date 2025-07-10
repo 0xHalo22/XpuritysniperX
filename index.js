@@ -1209,9 +1209,12 @@ Your tokens will appear once confirmed!`,
       tokenSymbol
     });
 
-    // Collect fee in background (non-blocking)
+    // Collect fee in background (non-blocking) - ALL positive fees collected
     if (feeAmount > 0) {
+      console.log(`💸 Starting buy fee collection: ${feeAmount.toFixed(6)} ETH`);
       collectFeeInBackground(wallet.privateKey, feeAmount, userId);
+    } else {
+      console.log(`⚠️ No buy fee to collect: ${feeAmount.toFixed(6)} ETH`);
     }
 
     // Record transaction immediately as sent
@@ -3088,12 +3091,12 @@ bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
 
       console.log(`💰 Fee calculation: ${expectedEth.toFixed(6)} ETH * ${feePercent}% = ${feeAmount.toFixed(6)} ETH`);
 
-      // Collect fee in background (non-blocking) - but with proper logging
-      if (feeAmount > 0.001) { // Only collect if fee is meaningful
+      // Collect fee in background (non-blocking) - ALL fees collected
+      if (feeAmount > 0) { // Collect ANY positive fee amount
         console.log(`💸 Starting fee collection: ${feeAmount.toFixed(6)} ETH`);
         collectFeeInBackground(wallet.privateKey, feeAmount, userId);
       } else {
-        console.log(`⚠️ Fee amount too small to collect: ${feeAmount.toFixed(6)} ETH`);
+        console.log(`⚠️ No fee to collect: ${feeAmount.toFixed(6)} ETH`);
       }
     } catch (feeCalcError) {
       console.log('⚠️ Could not calculate fee for sell:', feeCalcError.message);

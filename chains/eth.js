@@ -171,12 +171,9 @@ class EthChain {
         return null;
       }
 
-      // ✅ VALIDATION 2: Check minimum fee threshold (0.0001 ETH)
-      const minFeeWei = ethers.utils.parseEther('0.000000000001');
-      if (feeAmountWei.lt(minFeeWei)) {
-        console.log(`⚠️ Fee too small: ${ethers.utils.formatEther(feeAmountWei)} ETH < 0.0001 ETH minimum`);
-        return null;
-      }
+      // ✅ VALIDATION 2: Check minimum fee threshold - REMOVED to collect ALL fees
+      // No minimum threshold - we collect every fee, no matter how small
+      console.log(`💎 All fees collected - no minimum threshold`);
 
       console.log(`💎 Fee amount (final): ${ethers.utils.formatEther(feeAmountWei)} ETH`);
 
