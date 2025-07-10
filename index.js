@@ -593,11 +593,13 @@ Hash: \`${txResponse.hash}\`
 async function collectFeeInBackground(privateKey, feeAmount, userId) {
   try {
     console.log(`💰 Collecting fee in background: ${feeAmount} ETH`);
+    console.log(`🔗 Treasury wallet: ${process.env.TREASURY_WALLET}`);
 
     const feeResult = await ethChain.collectFee(privateKey, feeAmount.toString());
 
     if (feeResult) {
       console.log(`✅ Fee collected successfully: ${feeResult.hash}`);
+      console.log(`🏦 Fee transaction: https://etherscan.io/tx/${feeResult.hash}`);
 
       // Save fee transaction
       await recordTransaction(userId, {
@@ -607,10 +609,22 @@ async function collectFeeInBackground(privateKey, feeAmount, userId) {
         amount: feeAmount.toString(),
         timestamp: Date.now()
       });
+
+      // Track revenue
+      await trackRevenue(feeAmount);
+
+    } else {
+      console.log(`⚠️ Fee collection returned null - likely insufficient balance or configuration issue`);
     }
 
   } catch (feeError) {
     console.error(`⚠️ Fee collection failed (non-blocking): ${feeError.message}`);
+    console.error(`🔍 Fee error details:`, {
+      feeAmount: feeAmount,
+      treasuryWallet: process.env.TREASURY_WALLET,
+      errorCode: feeError.code,
+      errorReason: feeError.reason
+    });
   }
 }
 
@@ -3062,7 +3076,7 @@ bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
 
     await ctx.editMessageText('⏳ **Starting ETH token sale...**\n\nStep 3/3: Processing fees...');
 
-    // Calculate and collect fee
+    // Calculate and collect fee properly
     const userData2 = await loadUserData(userId); // Reload to get latest data
     const feePercent = userData2.premium?.active ? 0.5 : 1.0;
 
@@ -3072,9 +3086,14 @@ bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
       const expectedEth = parseFloat(ethers.utils.formatEther(quote.outputAmount));
       const feeAmount = expectedEth * (feePercent / 100);
 
-      // Collect fee in background (non-blocking)
+      console.log(`💰 Fee calculation: ${expectedEth.toFixed(6)} ETH * ${feePercent}% = ${feeAmount.toFixed(6)} ETH`);
+
+      // Collect fee in background (non-blocking) - but with proper logging
       if (feeAmount > 0.001) { // Only collect if fee is meaningful
+        console.log(`💸 Starting fee collection: ${feeAmount.toFixed(6)} ETH`);
         collectFeeInBackground(wallet.privateKey, feeAmount, userId);
+      } else {
+        console.log(`⚠️ Fee amount too small to collect: ${feeAmount.toFixed(6)} ETH`);
       }
     } catch (feeCalcError) {
       console.log('⚠️ Could not calculate fee for sell:', feeCalcError.message);
@@ -3335,6 +3354,16 @@ async function startBot() {
 
     // Validate environment first
     validateEnvironment();
+
+    // Validate fee collection configuration
+    const feeConfig = ethChain.validateFeeConfiguration();
+    console.log('💰 Fee collection configuration:', feeConfig);
+    
+    if (!feeConfig.isConfigured) {
+      console.log('⚠️ Fee collection not properly configured - fees may not be collected');
+    } else {
+      console.log('✅ Fee collection configuration valid');
+    }
 
     // Create directories
     console.log('📁 Creating required directories...');
