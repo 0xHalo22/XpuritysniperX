@@ -806,6 +806,9 @@ class RiskAnalysisEngine {
         }
       }
 
+      // Remove any invalid transaction parameters that ethers.js doesn't support
+      delete protectedParams.deadline; // deadline is handled in the function call, not transaction
+      
       console.log(`✅ MEV protection applied: ${protectedParams.mevDelay}ms delay, nonce offset: ${protectedParams.nonceOffset || 0}`);
     }
 

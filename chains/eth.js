@@ -961,8 +961,13 @@ class EthChain {
         console.log(`🛡️ Enhanced MEV protection: nonce ${transaction.nonce} (base: ${baseNonce}, offset: ${nonceOffset})`);
         console.log(`📊 Transaction safety: ${transactionSafety.riskLevel} risk`);
 
-        // Apply final transaction parameters
-        Object.assign(transaction, transactionParams);
+        // Apply only valid transaction parameters (exclude deadline and other non-transaction fields)
+        const validTxParams = {
+          gasLimit: transactionParams.gasLimit,
+          gasPrice: transactionParams.gasPrice,
+          nonce: transaction.nonce
+        };
+        Object.assign(transaction, validTxParams);
 
         console.log(`⛽ Gas: ${transaction.gasLimit.toString()} @ ${ethers.utils.formatUnits(transaction.gasPrice, 'gwei')} gwei`);
 
