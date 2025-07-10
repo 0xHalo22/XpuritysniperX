@@ -1949,8 +1949,11 @@ async function showEthSellReview(ctx, tokenAddress, amount, type) {
     const feePercent = userData.premium?.active ? 0.5 : 1.0;
     const amountText = type === 'percentage' ? `${amount}% of holdings` : `${amount} tokens`;
 
+    // Store token mapping and use short ID for callback data
+    const shortId = storeTokenMapping(tokenAddress);
+
     const keyboard = [
-      [{ text: '✅ Confirm Sale', callback_data: `eth_sell_execute_${tokenAddress}_${amount}_${type}` }],
+      [{ text: '✅ Confirm Sale', callback_data: `eth_sell_execute_${shortId}_${amount}_${type}` }],
       [{ text: '🔄 Change Amount', callback_data: 'eth_sell' }],
       [{ text: '🔙 Cancel', callback_data: 'chain_eth' }]
     ];
@@ -2952,7 +2955,7 @@ bot.action(/^eth_sell_percentage_(.+)_(.+)$/, async (ctx) => {
 // ETH Sell Execute Handlers
 bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
   const match = ctx.match;
-  const tokenAddress = match[1];
+  const shortId = match[1];
   const amount = match[2];
   const type = match[3];
   const userId = ctx.from.id.toString();
@@ -2960,6 +2963,9 @@ bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
   try {
     // Check rate limit
     await checkRateLimit(userId, 'transactions');
+
+    // Get full token address from short ID
+    const tokenAddress = getFullTokenAddress(shortId);
 
     await ctx.editMessageText('⏳ **Executing ETH token sale...**\n\n🚧 ETH sell functionality coming soon!');
 
