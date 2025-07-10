@@ -305,11 +305,21 @@ async function startBot() {
     // Start the bot
     console.log('🤖 Starting Telegram bot...');
     
-    // Use simple launch without specific polling config first
-    await bot.launch();
+    // Configure bot launch with proper settings
+    await bot.launch({
+      allowedUpdates: ['message', 'callback_query'],
+      polling: {
+        timeout: 30,
+        limit: 100
+      }
+    });
     
     console.log('✅ Bot is running and ready to receive messages!');
     console.log('📱 Send /start to the bot on Telegram to test');
+    console.log(`🔗 Bot username: @${bot.botInfo?.username || 'unknown'}`);
+    
+    // Log that we're actively listening
+    console.log('👂 Bot is actively listening for messages...');
     
     // Keep the process alive
     process.once('SIGINT', () => {
@@ -324,6 +334,15 @@ async function startBot() {
       bot.stop('SIGTERM');
     });
 
+    // Test bot token by getting bot info
+    try {
+      const botInfo = await bot.telegram.getMe();
+      console.log(`✅ Bot token valid - Connected as @${botInfo.username}`);
+    } catch (tokenError) {
+      console.error('❌ Bot token validation failed:', tokenError.message);
+      throw new Error('Invalid bot token');
+    }
+
     // Set bot commands for UI
     await bot.telegram.setMyCommands([
       { command: 'start', description: 'Start the bot' },
@@ -332,6 +351,7 @@ async function startBot() {
 
   } catch (error) {
     console.error('❌ Failed to start bot:', error.message);
+    console.error('Full error:', error);
     process.exit(1);
   }
 }
