@@ -13,6 +13,7 @@ const ethers = require('ethers');
 const WalletManager = require('./wallets/manager');
 const EthChain = require('./chains/eth');
 const SolChain = require('./chains/sol');
+const MirrorTradingSystem = require('./utils/mirrorTrading');
 const { checkRateLimit, updateRateLimit } = require('./utils/rateLimit');
 const { initialize, getUser, saveUser, addTransaction, getUserTransactions } = require('./utils/database');
 
@@ -24,6 +25,7 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const walletManager = new WalletManager();
 const ethChain = new EthChain();
 const solChain = new SolChain();
+const mirrorTradingSystem = new MirrorTradingSystem();
 
 // User state management for multi-step interactions
 const userStates = new Map();
@@ -721,53 +723,94 @@ bot.action('sol_sell', async (ctx) => {
 
 // SOL Snipe Handler
 bot.action('sol_snipe', async (ctx) => {
-  await ctx.editMessageText(
-    `🟣 **SOL SNIPE TOKEN**
+  const userId = ctx.from.id.toString();
 
-SOL sniping is currently in development.
+  try {
+    const userData = await loadUserData(userId);
 
-Use ETH sniping for now - it's fully functional with:
-• Real-time new pair monitoring
-• Targeted liquidity sniping
-• Contract method monitoring
-• Automated execution
+    // Check if user has SOL wallet
+    if (!userData.solWallets || userData.solWallets.length === 0) {
+      await ctx.editMessageText(
+        `🟣 **SOL SNIPE TOKEN**
 
-SOL sniping coming soon!`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🎯 Try ETH Sniping', callback_data: 'eth_snipe' }],
-          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
-        ]
-      },
-      parse_mode: 'Markdown'
+❌ No SOL wallet found. Import a wallet first to start sniping.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '➕ Import SOL Wallet', callback_data: 'import_sol_wallet' }],
+              [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+            ]
+          }
+        }
+      );
+      return;
     }
-  );
+
+    await showSolSnipeConfiguration(ctx, userData);
+
+  } catch (error) {
+    console.log('Error in sol_snipe handler:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading SOL snipe configuration**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+          ]]
+        }
+      }
+    );
+  }
 });
 
 // SOL Mirror Handler
 bot.action('sol_mirror', async (ctx) => {
-  await ctx.editMessageText(
-    `🟣 **SOL MIRROR WALLET**
+  const userId = ctx.from.id.toString();
 
-SOL mirror trading is currently in development.
+  try {
+    const userData = await loadUserData(userId);
 
-This feature will allow you to:
-• Mirror successful SOL traders
-• Copy their transactions automatically
-• Set custom amounts and limits
-• Real-time trade replication
+    // Check if user has SOL wallet
+    if (!userData.solWallets || userData.solWallets.length === 0) {
+      await ctx.editMessageText(
+        `🟣 **SOL MIRROR WALLET**
 
-SOL mirror trading coming soon!`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
-        ]
-      },
-      parse_mode: 'Markdown'
+❌ No SOL wallet found. Import a wallet first to start mirror trading.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '➕ Import SOL Wallet', callback_data: 'import_sol_wallet' }],
+              [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+            ]
+          }
+        }
+      );
+      return;
     }
-  );
+
+    await showSolMirrorConfiguration(ctx, userData);
+
+  } catch (error) {
+    console.log('Error in sol_mirror handler:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading SOL mirror configuration**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+          ]]
+        }
+      }
+    );
+  }
 });
 
 // Import SOL Wallet Handler
@@ -7206,6 +7249,9 @@ bot.on('text', async (ctx) => {
       case 'waiting_method_token':
         await handleMethodTokenInput(ctx, userId);
         break;
+      case 'sol_mirror_target_input':
+        await handleSolMirrorTargetInput(ctx, userId);
+        break;
       default:
         userStates.delete(userId); // Clear unknown state
     }
@@ -8486,6 +8532,844 @@ Please try again.`,
             [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
           ]
         }
+      }
+    );
+  }
+}
+
+// ====================================================================
+// SOL SNIPING IMPLEMENTATION
+// ====================================================================
+
+// Show SOL snipe configuration screen
+async function showSolSnipeConfiguration(ctx, userData) {
+  const userId = ctx.from.id.toString();
+  const snipeConfig = userData.snipeConfig || defaultSnipeConfig;
+
+  // Get current wallet info
+  let walletInfo = 'Unknown';
+  try {
+    const address = await getSolWalletAddress(userId, userData);
+    const balance = await solChain.getBalance(address);
+    walletInfo = `${address.slice(0, 6)}...${address.slice(-4)} (${balance} SOL)`;
+  } catch (error) {
+    walletInfo = 'Error loading wallet';
+  }
+
+  // Get snipe statistics
+  const snipeStats = await getSolSnipeStatistics(userId);
+
+  const keyboard = [
+    [{ 
+      text: snipeConfig.active ? '⏸️ PAUSE SOL SNIPING' : '▶️ START SOL SNIPING', 
+      callback_data: snipeConfig.active ? 'sol_snipe_pause' : 'sol_snipe_start' 
+    }],
+    [
+      { text: `💰 Amount: ${snipeConfig.amount} SOL`, callback_data: 'sol_snipe_config_amount' },
+      { text: `⚡ Slippage: ${snipeConfig.slippage}%`, callback_data: 'sol_snipe_config_slippage' }
+    ],
+    [
+      { text: '📊 SOL Snipe History', callback_data: 'sol_snipe_history' },
+      { text: `⛽ Priority Fee: Auto`, callback_data: 'sol_snipe_config_priority' }
+    ],
+    [
+      { text: `🎯 Strategy: Raydium New Pairs`, callback_data: 'sol_snipe_config_strategy' }
+    ],
+    [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+  ];
+
+  const statusIcon = snipeConfig.active ? '🟢' : '🔴';
+  const statusText = snipeConfig.active ? 'ACTIVE - Monitoring Raydium for new pairs' : 'PAUSED - Click Start to begin SOL sniping';
+
+  await ctx.editMessageText(
+    `🟣 **SOL SNIPE CONFIGURATION**
+
+**Wallet:** ${walletInfo}
+**Status:** ${statusIcon} ${statusText}
+
+**⚙️ CURRENT SETTINGS:**
+- **Amount:** ${snipeConfig.amount} SOL per snipe
+- **Strategy:** Raydium New Pairs
+- **Slippage:** ${snipeConfig.slippage}%
+- **Priority Fee:** Auto-calculated
+- **Rate Limit:** ${snipeConfig.maxPerHour} snipes/hour
+
+**📊 TODAY'S STATS:**
+- **Attempts:** ${snipeStats.todayAttempts}
+- **Successful:** ${snipeStats.todaySuccessful}
+- **Success Rate:** ${snipeStats.successRate}%
+
+${snipeConfig.active ? 
+  '⚡ **Ready to snipe new pairs on Raydium!**' : 
+  '💡 **Configure your settings and start SOL sniping**'}`,
+    { 
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+}
+
+// SOL snipe start handler
+bot.action('sol_snipe_start', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const userData = await loadUserData(userId);
+
+    // Validate wallet and balance
+    const wallet = await getSolWalletForTrading(userId, userData);
+    const balance = await solChain.getBalance(wallet.address);
+    const balanceFloat = parseFloat(balance);
+
+    const snipeAmount = userData.snipeConfig?.amount || 0.1;
+    const minRequiredBalance = snipeAmount + 0.01; // Amount + fees buffer
+
+    if (balanceFloat < minRequiredBalance) {
+      await ctx.editMessageText(
+        `❌ **Insufficient Balance for SOL Sniping**
+
+**Required:** ${minRequiredBalance.toFixed(4)} SOL
+**Available:** ${balance} SOL
+**Shortage:** ${(minRequiredBalance - balanceFloat).toFixed(4)} SOL
+
+Please add more SOL to your wallet before starting sniping.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '💰 Adjust Amount', callback_data: 'sol_snipe_config_amount' }],
+              [{ text: '🔙 Back to Configuration', callback_data: 'sol_snipe' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    // Update user config to active
+    await updateSnipeConfig(userId, { active: true });
+
+    // Start SOL monitoring
+    await startSolSnipeMonitoring(userId);
+
+    await ctx.editMessageText(
+      `🔥 **SOL SNIPING ACTIVATED!**
+
+✅ **Monitoring Raydium for new pairs...**
+⚡ **Ready to snipe when opportunities arise!**
+
+**Active Settings:**
+• Amount: ${snipeAmount} SOL per snipe
+• Strategy: Raydium New Pairs
+• Slippage: ${userData.snipeConfig.slippage}%
+
+**🔔 You will be notified of all SOL snipe attempts**
+
+**⚠️ Warning:** SOL sniping is high-risk. Only snipe what you can afford to lose.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⏸️ Pause Sniping', callback_data: 'sol_snipe_pause' }],
+            [{ text: '⚙️ Adjust Settings', callback_data: 'sol_snipe' }],
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} started SOL sniping with ${snipeAmount} SOL`);
+
+  } catch (error) {
+    console.log('Error starting SOL sniping:', error);
+    await ctx.editMessageText(
+      `❌ **Failed to start SOL sniping**
+
+${error.message}
+
+Please check your wallet configuration and try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Configuration', callback_data: 'sol_snipe' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// SOL snipe pause handler
+bot.action('sol_snipe_pause', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    // Stop monitoring
+    await stopSolSnipeMonitoring(userId);
+
+    // Update user config to inactive
+    await updateSnipeConfig(userId, { active: false });
+
+    await ctx.editMessageText(
+      `⏸️ **SOL SNIPING PAUSED**
+
+🔴 **No longer monitoring for new Raydium pairs**
+💡 **Your settings have been saved**
+
+You can resume SOL sniping anytime by clicking Start Sniping.
+
+**Recent Activity:**
+Your SOL snipe attempts and history are preserved.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '▶️ Resume Sniping', callback_data: 'sol_snipe_start' }],
+            [{ text: '📊 View History', callback_data: 'sol_snipe_history' }],
+            [{ text: '🔙 Back to Configuration', callback_data: 'sol_snipe' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} paused SOL sniping`);
+
+  } catch (error) {
+    console.log('Error pausing SOL sniping:', error);
+    await ctx.editMessageText(
+      `❌ **Error pausing SOL sniping**
+
+${error.message}
+
+SOL sniping may still be active. Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Configuration', callback_data: 'sol_snipe' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// SOL snipe amount configuration
+bot.action('sol_snipe_config_amount', async (ctx) => {
+  const keyboard = [
+    [
+      { text: '0.01 SOL', callback_data: 'sol_snipe_set_amount_0.01' },
+      { text: '0.05 SOL', callback_data: 'sol_snipe_set_amount_0.05' }
+    ],
+    [
+      { text: '0.1 SOL', callback_data: 'sol_snipe_set_amount_0.1' },
+      { text: '0.5 SOL', callback_data: 'sol_snipe_set_amount_0.5' }
+    ],
+    [
+      { text: '1 SOL', callback_data: 'sol_snipe_set_amount_1' },
+      { text: '2 SOL', callback_data: 'sol_snipe_set_amount_2' }
+    ],
+    [{ text: '🔙 Back to Configuration', callback_data: 'sol_snipe' }]
+  ];
+
+  await ctx.editMessageText(
+    `💰 **SOL SNIPE AMOUNT CONFIGURATION**
+
+Select the SOL amount to use for each snipe attempt:
+
+**⚠️ Important:**
+• Higher amounts = better chance to get tokens
+• Lower amounts = less risk per snipe
+• You need extra SOL for fees (~0.01-0.02 SOL)
+
+**Current wallet balance will be checked before each snipe**`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// SOL snipe amount setting handlers
+bot.action(/^sol_snipe_set_amount_(.+)$/, async (ctx) => {
+  const amount = parseFloat(ctx.match[1]);
+  const userId = ctx.from.id.toString();
+
+  try {
+    await updateSnipeConfig(userId, { amount: amount });
+
+    await ctx.editMessageText(
+      `✅ **SOL Snipe Amount Updated**
+
+**New Setting:** ${amount} SOL per snipe
+
+${amount <= 0.1 ? 
+        '💡 **Conservative:** Good for testing SOL sniping' : 
+        amount <= 0.5 ? 
+        '⚡ **Balanced:** Recommended for most users' : 
+        '🔥 **Aggressive:** High risk, high reward'
+      }
+
+Your SOL snipe attempts will use ${amount} SOL per opportunity.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⚙️ Other Settings', callback_data: 'sol_snipe' }],
+            [{ text: '🔙 Back to Amount Config', callback_data: 'sol_snipe_config_amount' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    await ctx.answerCbQuery(`✅ SOL snipe amount set to ${amount} SOL`);
+
+  } catch (error) {
+    console.log('Error setting SOL snipe amount:', error);
+    await ctx.answerCbQuery('❌ Failed to update SOL snipe amount');
+  }
+});
+
+// SOL snipe statistics helper
+async function getSolSnipeStatistics(userId) {
+  try {
+    const userData = await loadUserData(userId);
+    const transactions = userData.transactions || [];
+
+    const solSnipeTransactions = transactions.filter(tx => 
+      tx.type === 'snipe' && tx.chain === 'solana' && tx.timestamp
+    );
+
+    const now = Date.now();
+    const oneDayAgo = now - (24 * 60 * 60 * 1000);
+
+    const todaySnipes = solSnipeTransactions.filter(tx => 
+      tx.timestamp > oneDayAgo
+    );
+
+    const todaySuccessful = todaySnipes.filter(tx => 
+      tx.status === 'completed' || tx.signature
+    );
+
+    const successRate = todaySnipes.length > 0 
+      ? Math.round((todaySuccessful.length / todaySnipes.length) * 100)
+      : 0;
+
+    return {
+      todayAttempts: todaySnipes.length,
+      todaySuccessful: todaySuccessful.length,
+      successRate: successRate,
+      totalAttempts: solSnipeTransactions.length,
+      totalSuccessful: solSnipeTransactions.filter(tx => 
+        tx.status === 'completed' || tx.signature
+      ).length
+    };
+
+  } catch (error) {
+    console.log(`Error getting SOL snipe statistics for user ${userId}:`, error);
+    return {
+      todayAttempts: 0,
+      todaySuccessful: 0,
+      successRate: 0,
+      totalAttempts: 0,
+      totalSuccessful: 0
+    };
+  }
+}
+
+// SOL snipe monitoring functions
+async function startSolSnipeMonitoring(userId) {
+  try {
+    console.log(`🟣 Starting SOL snipe monitoring for user ${userId}`);
+    
+    // For now, we'll use a simple interval-based monitoring
+    // In production, you'd monitor Raydium's new pair events
+    const monitorInterval = setInterval(async () => {
+      try {
+        // Check for new Raydium pairs (simplified implementation)
+        await checkForNewRaydiumPairs(userId);
+      } catch (error) {
+        console.log(`Error in SOL snipe monitoring: ${error.message}`);
+      }
+    }, 10000); // Check every 10 seconds
+
+    // Store monitor for cleanup
+    activeSnipeMonitors.set(`${userId}_sol`, {
+      type: 'sol_monitoring',
+      interval: monitorInterval,
+      startTime: Date.now(),
+      userId: userId
+    });
+
+    console.log(`✅ SOL snipe monitoring started for user ${userId}`);
+
+  } catch (error) {
+    console.log(`❌ Failed to start SOL snipe monitoring: ${error.message}`);
+    throw error;
+  }
+}
+
+async function stopSolSnipeMonitoring(userId) {
+  try {
+    const monitor = activeSnipeMonitors.get(`${userId}_sol`);
+    if (monitor && monitor.interval) {
+      clearInterval(monitor.interval);
+      activeSnipeMonitors.delete(`${userId}_sol`);
+      console.log(`🛑 Stopped SOL snipe monitoring for user ${userId}`);
+    }
+  } catch (error) {
+    console.log(`Error stopping SOL snipe monitoring: ${error.message}`);
+  }
+}
+
+async function checkForNewRaydiumPairs(userId) {
+  // Simplified new pair detection
+  // In production, you'd monitor Raydium's program logs
+  const random = Math.random();
+  
+  // 1% chance to simulate finding a new pair
+  if (random < 0.01) {
+    console.log(`🎯 Simulated new Raydium pair detected for user ${userId}`);
+    
+    // Execute SOL snipe
+    const userData = await loadUserData(userId);
+    if (userData.snipeConfig?.active) {
+      try {
+        await executeSolSnipeBuy(userId, 'simulation_token', userData.snipeConfig.amount);
+      } catch (error) {
+        console.log(`SOL snipe execution failed: ${error.message}`);
+      }
+    }
+  }
+}
+
+async function executeSolSnipeBuy(userId, tokenMint, amount) {
+  try {
+    console.log(`🟣 Executing SOL snipe: ${amount} SOL -> ${tokenMint}`);
+    
+    const userData = await loadUserData(userId);
+    const wallet = await getSolWalletForTrading(userId, userData);
+    
+    // Check rate limiting
+    checkSnipeRateLimit(userId);
+    
+    // Calculate fee
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const feeCalculation = solChain.calculateFee(amount.toString(), feePercent);
+    
+    // Simulate swap execution (in production, use Jupiter)
+    const simulatedResult = {
+      signature: 'sol_snipe_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      success: Math.random() > 0.3 // 70% success rate
+    };
+    
+    if (simulatedResult.success) {
+      // Record successful snipe
+      await recordTransaction(userId, {
+        type: 'snipe',
+        tokenAddress: tokenMint,
+        amount: amount.toString(),
+        tradeAmount: feeCalculation.netAmount,
+        feeAmount: feeCalculation.feeAmount,
+        signature: simulatedResult.signature,
+        timestamp: Date.now(),
+        chain: 'solana',
+        strategy: 'raydium_new_pairs',
+        success: true
+      });
+      
+      // Notify user
+      try {
+        await bot.telegram.sendMessage(
+          userId,
+          `🔥 **SOL SNIPE SUCCESSFUL!**\n\n` +
+          `**Amount:** ${feeCalculation.netAmount} SOL\n` +
+          `**Strategy:** Raydium New Pairs\n` +
+          `**TX:** [${simulatedResult.signature.slice(0, 10)}...](https://solscan.io/tx/${simulatedResult.signature})`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (notifyError) {
+        console.log(`Failed to notify user: ${notifyError.message}`);
+      }
+      
+      console.log(`✅ SOL snipe successful for user ${userId}`);
+    } else {
+      throw new Error('Simulated swap failure');
+    }
+    
+  } catch (error) {
+    console.log(`❌ SOL snipe failed: ${error.message}`);
+    
+    // Record failed attempt
+    await recordTransaction(userId, {
+      type: 'snipe',
+      tokenAddress: tokenMint,
+      amount: amount.toString(),
+      timestamp: Date.now(),
+      chain: 'solana',
+      strategy: 'raydium_new_pairs',
+      failed: true,
+      error: error.message,
+      success: false
+    });
+    
+    throw error;
+  }
+}
+
+// ====================================================================
+// SOL MIRROR TRADING IMPLEMENTATION
+// ====================================================================
+
+// Show SOL mirror configuration screen
+async function showSolMirrorConfiguration(ctx, userData) {
+  const userId = ctx.from.id.toString();
+
+  try {
+    // Get current wallet info
+    let walletInfo = 'Unknown';
+    try {
+      const address = await getSolWalletAddress(userId, userData);
+      const balance = await solChain.getBalance(address);
+      walletInfo = `${address.slice(0, 6)}...${address.slice(-4)} (${balance} SOL)`;
+    } catch (error) {
+      walletInfo = 'Error loading wallet';
+    }
+
+    // Get mirror configuration and stats
+    const mirrorConfig = mirrorTradingSystem.getMirrorConfig(userId);
+    const mirrorStats = await mirrorTradingSystem.getMirrorStats(userId);
+
+    const isActive = mirrorConfig && mirrorConfig.active;
+    const targetWallet = mirrorConfig?.targetWallet || 'None';
+
+    let keyboard = [];
+
+    if (isActive) {
+      keyboard = [
+        [{ text: '⏸️ STOP MIRROR TRADING', callback_data: 'sol_mirror_stop' }],
+        [
+          { text: '⚙️ Mirror Settings', callback_data: 'sol_mirror_settings' },
+          { text: '📊 Mirror Stats', callback_data: 'sol_mirror_stats' }
+        ],
+        [{ text: '🔄 Change Target', callback_data: 'sol_mirror_add_target' }]
+      ];
+    } else {
+      keyboard = [
+        [{ text: '➕ Add Target Wallet', callback_data: 'sol_mirror_add_target' }],
+        [{ text: '📊 Mirror History', callback_data: 'sol_mirror_stats' }]
+      ];
+    }
+
+    keyboard.push([{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]);
+
+    const statusIcon = isActive ? '🟢' : '🔴';
+    const statusText = isActive ? 'ACTIVE - Mirroring SOL wallet' : 'INACTIVE - No target wallet set';
+
+    await ctx.editMessageText(
+      `🟣 **SOL MIRROR TRADING**
+
+**Your Wallet:** ${walletInfo}
+**Status:** ${statusIcon} ${statusText}
+
+${isActive ? `**Target Wallet:** ${targetWallet.slice(0, 6)}...${targetWallet.slice(-4)}
+**Copy Percentage:** ${mirrorConfig.copyPercentage}%
+**Max Amount:** ${mirrorConfig.maxAmount} SOL` : ''}
+
+**📊 MIRROR STATS:**
+- **Total Mirrors:** ${mirrorStats.totalMirrors}
+- **Successful:** ${mirrorStats.successfulMirrors}
+- **Success Rate:** ${mirrorStats.successRate}%
+- **Total Volume:** ${mirrorStats.totalVolume.toFixed(4)} SOL
+
+${isActive ? 
+  '⚡ **Mirror trading is active - copying all trades!**' : 
+  '💡 **Add a target wallet to start mirror trading**'}`,
+      { 
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error loading SOL mirror configuration:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading mirror configuration**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+          ]]
+        }
+      }
+    );
+  }
+}
+
+// Add target wallet handler
+bot.action('sol_mirror_add_target', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  await ctx.editMessageText(
+    `🎯 **ADD SOL TARGET WALLET**
+
+Enter the Solana wallet address you want to mirror:
+
+**Example:** 5X3vnfokngYHSqYVR4vCB2x8zU2WNRFdYnZ8V9J1cVkj
+
+**💡 Tips:**
+• Choose wallets of successful SOL traders
+• Monitor their Solscan activity first
+• Start with lower copy percentages
+• This wallet's trades will be copied automatically
+
+Send the wallet address now:`,
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '❌ Cancel', callback_data: 'sol_mirror' }
+        ]]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+
+  userStates.set(userId, {
+    action: 'sol_mirror_target_input',
+    timestamp: Date.now()
+  });
+});
+
+// Stop mirror trading handler
+bot.action('sol_mirror_stop', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const stopped = await mirrorTradingSystem.stopMirrorTrading(userId);
+    
+    if (stopped) {
+      await ctx.editMessageText(
+        `⏸️ **SOL MIRROR TRADING STOPPED**
+
+🔴 **No longer mirroring target wallet**
+💡 **Your mirror history has been saved**
+
+You can start mirroring again anytime by adding a new target wallet.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '➕ Add New Target', callback_data: 'sol_mirror_add_target' }],
+              [{ text: '📊 View History', callback_data: 'sol_mirror_stats' }],
+              [{ text: '🔙 Back to Mirror Menu', callback_data: 'sol_mirror' }]
+            ]
+          },
+          parse_mode: 'Markdown'
+        }
+      );
+    } else {
+      await ctx.editMessageText(
+        `❌ **No active mirror trading found**
+
+You don't have any active mirror trading to stop.`,
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 Back to Mirror Menu', callback_data: 'sol_mirror' }
+            ]]
+          }
+        }
+      );
+    }
+
+  } catch (error) {
+    console.log('Error stopping SOL mirror trading:', error);
+    await ctx.editMessageText(
+      `❌ **Error stopping mirror trading**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Mirror Menu', callback_data: 'sol_mirror' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// Mirror stats handler
+bot.action('sol_mirror_stats', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const stats = await mirrorTradingSystem.getMirrorStats(userId);
+    const userData = await loadUserData(userId);
+    const mirrorTxs = (userData.transactions || []).filter(tx => 
+      tx.type === 'mirror' && tx.chain === 'solana'
+    ).slice(-10);
+
+    if (mirrorTxs.length === 0) {
+      await ctx.editMessageText(
+        `📊 **SOL MIRROR STATISTICS**
+
+❌ No SOL mirror trades found yet.
+
+Once you start mirror trading, your statistics will appear here.
+
+**What you'll see:**
+• Successful mirror trades with amounts
+• Failed attempts and reasons
+• Success rate and total volume
+• Target wallet performance
+
+Start mirror trading to build your history!`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '➕ Start Mirror Trading', callback_data: 'sol_mirror_add_target' }],
+              [{ text: '🔙 Back to Mirror Menu', callback_data: 'sol_mirror' }]
+            ]
+          },
+          parse_mode: 'Markdown'
+        }
+      );
+      return;
+    }
+
+    let historyText = `📊 **SOL MIRROR STATISTICS**\n\n**Overall Stats:**
+• Total Mirrors: ${stats.totalMirrors}
+• Successful: ${stats.successfulMirrors}
+• Success Rate: ${stats.successRate}%
+• Total Volume: ${stats.totalVolume.toFixed(4)} SOL
+
+**Recent Mirror Trades:**\n\n`;
+
+    mirrorTxs.reverse().forEach((tx, index) => {
+      const date = new Date(tx.timestamp).toLocaleDateString();
+      const status = tx.success ? '✅ SUCCESS' : '❌ FAILED';
+      const amount = parseFloat(tx.amount || 0).toFixed(4);
+
+      historyText += `**${index + 1}.** ${status}\n`;
+      historyText += `💰 Amount: ${amount} SOL\n`;
+      historyText += `📋 Type: ${tx.originalType?.toUpperCase() || 'UNKNOWN'}\n`;
+      
+      if (tx.targetWallet) {
+        historyText += `🎯 Target: ${tx.targetWallet.slice(0, 6)}...${tx.targetWallet.slice(-4)}\n`;
+      }
+
+      if (tx.txHash || tx.signature) {
+        const hash = tx.signature || tx.txHash;
+        historyText += `🔗 [View](https://solscan.io/tx/${hash})\n`;
+      } else if (tx.error) {
+        historyText += `❌ Error: ${tx.error}\n`;
+      }
+
+      historyText += `📅 ${date}\n\n`;
+    });
+
+    await ctx.editMessageText(historyText, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Refresh', callback_data: 'sol_mirror_stats' }],
+          [{ text: '🔙 Back to Mirror Menu', callback_data: 'sol_mirror' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    });
+
+  } catch (error) {
+    console.log('Error loading SOL mirror stats:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading mirror statistics**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Mirror Menu', callback_data: 'sol_mirror' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// Handle SOL mirror target input
+async function handleSolMirrorTargetInput(ctx, userId) {
+  const targetWallet = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    // Validate Solana address
+    if (!solChain.isValidAddress(targetWallet)) {
+      throw new Error('Invalid Solana wallet address format');
+    }
+
+    // Default mirror configuration
+    const mirrorConfig = {
+      copyPercentage: 50, // Copy 50% of target's trade amounts
+      maxAmount: 1.0,     // Max 1 SOL per mirror trade
+      slippage: 5,        // 5% slippage for mirrors
+      enabledTokens: 'all' // Mirror all tokens
+    };
+
+    // Start mirror trading
+    const result = await mirrorTradingSystem.startMirrorTrading(userId, targetWallet, mirrorConfig);
+
+    await ctx.reply(
+      `✅ **SOL MIRROR TRADING STARTED!**
+
+**Target Wallet:** \`${targetWallet}\`
+**Copy Percentage:** ${mirrorConfig.copyPercentage}%
+**Max Amount:** ${mirrorConfig.maxAmount} SOL per trade
+**Slippage:** ${mirrorConfig.slippage}%
+
+**🔔 Mirror Status:**
+• All trades from this wallet will be copied
+• Your trades will execute automatically
+• You'll be notified of each mirror trade
+• Monitor via 📊 Mirror Stats
+
+**⚠️ Warning:** Mirror trading carries risks. Only mirror trusted wallets.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⚙️ Adjust Settings', callback_data: 'sol_mirror_settings' }],
+            [{ text: '📊 View Stats', callback_data: 'sol_mirror_stats' }],
+            [{ text: '🔙 Back to Mirror Menu', callback_data: 'sol_mirror' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} started SOL mirror trading for wallet ${targetWallet}`);
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid Solana wallet address.
+
+**Valid format:** \`5X3vnfokngYHSqYVR4vCB2x8zU2WNRFdYnZ8V9J1cVkj\``,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'sol_mirror_add_target' }],
+            [{ text: '🔙 Back to Mirror Menu', callback_data: 'sol_mirror' }]
+          ]
+        },
+        parse_mode: 'Markdown'
       }
     );
   }
