@@ -1,32 +1,109 @@
 
 // ====================================================================
-// PHASE 5: REPLIT DATABASE LAYER
-// Simple key-value database perfect for bot data
+// PHASE 5: REPLIT POSTGRESQL DATABASE LAYER
+// Production-ready PostgreSQL database for scalable bot data
 // ====================================================================
 
-const Database = require('@replit/database');
+const { Pool } = require('pg');
 
 class ReplitDatabaseManager {
   constructor() {
-    this.db = new Database();
+    this.pool = null;
     this.initialized = false;
   }
 
   /**
-   * Initialize Replit Database connection
+   * Initialize Replit PostgreSQL connection
    */
   async initialize() {
     try {
-      console.log('🔍 Initializing Replit Database...');
+      console.log('🔍 Initializing Replit PostgreSQL Database...');
+
+      // Get database URL from environment
+      const databaseUrl = process.env.DATABASE_URL;
+      if (!databaseUrl) {
+        throw new Error('DATABASE_URL environment variable not found');
+      }
+
+      // Use connection pooling for better performance
+      const poolUrl = databaseUrl.replace('.us-east-2', '-pooler.us-east-2');
+      
+      this.pool = new Pool({
+        connectionString: poolUrl,
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 2000,
+      });
 
       // Test connection
-      await this.db.get('test');
+      const client = await this.pool.connect();
+      
+      // Create tables if they don't exist
+      await this.createTables(client);
+      
+      client.release();
 
       this.initialized = true;
-      console.log('✅ Replit Database connected successfully');
+      console.log('✅ Replit PostgreSQL Database connected successfully');
 
     } catch (error) {
-      console.log('❌ Replit Database initialization failed:', error.message);
+      console.log('❌ Replit PostgreSQL initialization failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Create database tables
+   */
+  async createTables(client) {
+    try {
+      // Users table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          user_id VARCHAR(255) PRIMARY KEY,
+          data JSONB NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Transactions table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS transactions (
+          id SERIAL PRIMARY KEY,
+          user_id VARCHAR(255) NOT NULL,
+          data JSONB NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+      `);
+
+      // Revenue table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS revenue (
+          id SERIAL PRIMARY KEY,
+          user_id VARCHAR(255),
+          amount DECIMAL(18, 8) NOT NULL,
+          currency VARCHAR(10) NOT NULL,
+          transaction_id VARCHAR(255),
+          fee_type VARCHAR(50),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Create indexes for better performance
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_users_last_active ON users(last_active);
+        CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);
+        CREATE INDEX IF NOT EXISTS idx_revenue_created_at ON revenue(created_at);
+      `);
+
+      console.log('✅ Database tables created/verified successfully');
+
+    } catch (error) {
+      console.log('❌ Error creating tables:', error.message);
       throw error;
     }
   }
@@ -40,43 +117,50 @@ class ReplitDatabaseManager {
     }
 
     try {
-      const userData = await this.db.get(`user:${userId}`);
+      const client = await this.pool.connect();
+      
+      try {
+        const result = await client.query('SELECT data FROM users WHERE user_id = $1', [userId]);
 
-      if (!userData) {
-        // Return default user structure
-        return {
-          userId: userId.toString(),
-          ethWallets: [],
-          solWallets: [],
-          activeEthWallet: 0,
-          activeSolWallet: 0,
-          transactions: [],
-          settings: {
-            slippage: 3,
-            gasMultiplier: 1.2,
-            snipeStrategy: 'new_pairs'
-          },
-          mirrorTargets: [],
-          premium: {
-            active: false,
-            expiresAt: 0
-          },
-          createdAt: Date.now(),
-          lastActive: Date.now(),
-          snipeConfig: {
-            active: false,
-            amount: 0.1,
-            slippage: 10,
-            strategy: 'first_liquidity',
-            maxGasPrice: 100,
-            minLiquidity: 1000,
-            maxPerHour: 5,
-            targetTokens: []
-          }
-        };
+        if (result.rows.length === 0) {
+          // Return default user structure
+          return {
+            userId: userId.toString(),
+            ethWallets: [],
+            solWallets: [],
+            activeEthWallet: 0,
+            activeSolWallet: 0,
+            transactions: [],
+            settings: {
+              slippage: 3,
+              gasMultiplier: 1.2,
+              snipeStrategy: 'new_pairs'
+            },
+            mirrorTargets: [],
+            premium: {
+              active: false,
+              expiresAt: 0
+            },
+            createdAt: Date.now(),
+            lastActive: Date.now(),
+            snipeConfig: {
+              active: false,
+              amount: 0.1,
+              slippage: 10,
+              strategy: 'first_liquidity',
+              maxGasPrice: 100,
+              minLiquidity: 1000,
+              maxPerHour: 5,
+              targetTokens: []
+            }
+          };
+        }
+
+        return result.rows[0].data;
+
+      } finally {
+        client.release();
       }
-
-      return JSON.parse(userData);
 
     } catch (error) {
       console.log(`Error getting user ${userId}:`, error.message);
@@ -96,8 +180,24 @@ class ReplitDatabaseManager {
       userData.lastActive = Date.now();
       userData.updatedAt = Date.now();
 
-      await this.db.set(`user:${userId}`, JSON.stringify(userData));
-      console.log(`✅ User ${userId} saved to Replit Database`);
+      const client = await this.pool.connect();
+      
+      try {
+        await client.query(`
+          INSERT INTO users (user_id, data, last_active) 
+          VALUES ($1, $2, NOW()) 
+          ON CONFLICT (user_id) 
+          DO UPDATE SET 
+            data = $2, 
+            updated_at = NOW(), 
+            last_active = NOW()
+        `, [userId, userData]);
+
+        console.log(`✅ User ${userId} saved to PostgreSQL Database`);
+
+      } finally {
+        client.release();
+      }
 
     } catch (error) {
       console.log(`Error saving user ${userId}:`, error.message);
@@ -110,12 +210,20 @@ class ReplitDatabaseManager {
    */
   async addTransaction(userId, transaction) {
     try {
-      // Store transaction with timestamp as key for easy retrieval
-      const txKey = `tx:${userId}:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`;
-      await this.db.set(txKey, JSON.stringify(transaction));
+      const client = await this.pool.connect();
+      
+      try {
+        const result = await client.query(
+          'INSERT INTO transactions (user_id, data) VALUES ($1, $2) RETURNING id',
+          [userId, transaction]
+        );
 
-      console.log(`✅ Transaction recorded for user ${userId}`);
-      return { id: txKey };
+        console.log(`✅ Transaction recorded for user ${userId}`);
+        return { id: result.rows[0].id };
+
+      } finally {
+        client.release();
+      }
 
     } catch (error) {
       console.log(`Error adding transaction for user ${userId}:`, error.message);
@@ -128,25 +236,19 @@ class ReplitDatabaseManager {
    */
   async getUserTransactions(userId, limit = 50) {
     try {
-      const txPrefix = `tx:${userId}:`;
-      const keys = await this.db.list(txPrefix);
+      const client = await this.pool.connect();
+      
+      try {
+        const result = await client.query(
+          'SELECT data FROM transactions WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2',
+          [userId, limit]
+        );
 
-      // Get the most recent transactions
-      const recentKeys = keys.slice(-limit);
-      const transactions = [];
+        return result.rows.map(row => row.data);
 
-      for (const key of recentKeys) {
-        try {
-          const txData = await this.db.get(key);
-          if (txData) {
-            transactions.push(JSON.parse(txData));
-          }
-        } catch (parseError) {
-          console.log(`Error parsing transaction ${key}:`, parseError.message);
-        }
+      } finally {
+        client.release();
       }
-
-      return transactions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
     } catch (error) {
       console.log(`Error getting transactions for user ${userId}:`, error.message);
@@ -159,17 +261,17 @@ class ReplitDatabaseManager {
    */
   async addRevenue(userId, revenue) {
     try {
-      const revenueKey = `revenue:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`;
-      const revenueRecord = {
-        userId: parseInt(userId),
-        amount: revenue.amount,
-        currency: revenue.currency,
-        transactionId: revenue.transactionId,
-        feeType: revenue.feeType,
-        timestamp: Date.now()
-      };
+      const client = await this.pool.connect();
+      
+      try {
+        await client.query(
+          'INSERT INTO revenue (user_id, amount, currency, transaction_id, fee_type) VALUES ($1, $2, $3, $4, $5)',
+          [userId, revenue.amount, revenue.currency, revenue.transactionId, revenue.feeType]
+        );
 
-      await this.db.set(revenueKey, JSON.stringify(revenueRecord));
+      } finally {
+        client.release();
+      }
 
     } catch (error) {
       console.log(`Error adding revenue:`, error.message);
@@ -181,52 +283,35 @@ class ReplitDatabaseManager {
    */
   async getSystemStats() {
     try {
-      // Get all user keys
-      const userKeys = await this.db.list('user:');
-      const totalUsers = userKeys.length;
+      const client = await this.pool.connect();
+      
+      try {
+        // Get total users
+        const userResult = await client.query('SELECT COUNT(*) as total FROM users');
+        const totalUsers = parseInt(userResult.rows[0].total);
 
-      // Count active users (last 24 hours)
-      const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-      let activeUsers = 0;
+        // Get active users (last 24 hours)
+        const activeResult = await client.query(
+          'SELECT COUNT(*) as active FROM users WHERE last_active > NOW() - INTERVAL \'24 hours\''
+        );
+        const activeUsers = parseInt(activeResult.rows[0].active);
 
-      for (const key of userKeys.slice(-100)) { // Check last 100 users for performance
-        try {
-          const userData = await this.db.get(key);
-          if (userData) {
-            const user = JSON.parse(userData);
-            if (user.lastActive > oneDayAgo) {
-              activeUsers++;
-            }
-          }
-        } catch (error) {
-          continue;
-        }
+        // Get total revenue
+        const revenueResult = await client.query(
+          'SELECT SUM(amount) as total FROM revenue WHERE currency = \'ETH\''
+        );
+        const totalRevenue = parseFloat(revenueResult.rows[0].total || 0);
+
+        return {
+          totalUsers,
+          activeUsers,
+          totalRevenue,
+          uptime: Date.now()
+        };
+
+      } finally {
+        client.release();
       }
-
-      // Get revenue data
-      const revenueKeys = await this.db.list('revenue:');
-      let totalRevenue = 0;
-
-      for (const key of revenueKeys.slice(-100)) { // Check recent revenue
-        try {
-          const revenueData = await this.db.get(key);
-          if (revenueData) {
-            const revenue = JSON.parse(revenueData);
-            if (revenue.currency === 'ETH') {
-              totalRevenue += parseFloat(revenue.amount || 0);
-            }
-          }
-        } catch (error) {
-          continue;
-        }
-      }
-
-      return {
-        totalUsers,
-        activeUsers,
-        totalRevenue,
-        uptime: Date.now()
-      };
 
     } catch (error) {
       console.log('Error getting system stats:', error.message);
@@ -244,7 +329,7 @@ class ReplitDatabaseManager {
    */
   async migrateFromJSON() {
     try {
-      console.log('🔄 Starting migration from JSON files to Replit Database...');
+      console.log('🔄 Starting migration from JSON files to PostgreSQL Database...');
 
       const fs = require('fs').promises;
       const path = require('path');
@@ -262,7 +347,7 @@ class ReplitDatabaseManager {
             const userId = file.replace('.json', '');
             const userData = JSON.parse(await fs.readFile(path.join(usersDir, file), 'utf8'));
 
-            // Save to Replit Database
+            // Save to PostgreSQL Database
             await this.saveUser(userId, userData);
 
             // Migrate transactions
@@ -273,14 +358,14 @@ class ReplitDatabaseManager {
             }
 
             migratedCount++;
-            console.log(`✅ Migrated user ${userId} to Replit Database`);
+            console.log(`✅ Migrated user ${userId} to PostgreSQL Database`);
 
           } catch (userError) {
             console.log(`⚠️ Failed to migrate user from ${file}:`, userError.message);
           }
         }
 
-        console.log(`✅ Migration complete: ${migratedCount} users migrated to Replit Database`);
+        console.log(`✅ Migration complete: ${migratedCount} users migrated to PostgreSQL Database`);
 
       } catch (dirError) {
         console.log('No existing users directory found, starting fresh');
@@ -288,6 +373,16 @@ class ReplitDatabaseManager {
 
     } catch (error) {
       console.log('Migration error:', error.message);
+    }
+  }
+
+  /**
+   * Close database connection
+   */
+  async close() {
+    if (this.pool) {
+      await this.pool.end();
+      console.log('✅ PostgreSQL connection pool closed');
     }
   }
 }
