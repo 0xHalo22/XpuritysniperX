@@ -509,6 +509,78 @@ bot.action('chain_eth', showEthMenu);
 bot.action('chain_sol', showSolMenu);
 bot.action('statistics', showStatistics);
 
+// Statistics Handler
+async function showStatistics(ctx) {
+  const userId = ctx.from.id.toString();
+  
+  try {
+    const userData = await loadUserData(userId);
+    const transactions = userData.transactions || [];
+    
+    // Calculate statistics
+    const totalTransactions = transactions.length;
+    const ethTransactions = transactions.filter(tx => tx.chain === 'ethereum').length;
+    const solTransactions = transactions.filter(tx => tx.chain === 'solana').length;
+    
+    // Calculate success rate for recent transactions (last 30 days)
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    const recentTx = transactions.filter(tx => tx.timestamp > thirtyDaysAgo);
+    const successfulTx = recentTx.filter(tx => tx.status === 'completed' || tx.txHash);
+    const successRate = recentTx.length > 0 ? Math.round((successfulTx.length / recentTx.length) * 100) : 0;
+    
+    // Get wallet counts
+    const ethWallets = userData.ethWallets?.length || 0;
+    const solWallets = userData.solWallets?.length || 0;
+    
+    const keyboard = [
+      [{ text: '📊 Transaction History', callback_data: 'view_tx_history' }],
+      [{ text: '🔙 Back to Home', callback_data: 'main_menu' }]
+    ];
+
+    await ctx.editMessageText(
+      `📊 **YOUR STATISTICS**
+
+**Wallets:**
+🔗 ETH Wallets: ${ethWallets}
+🟣 SOL Wallets: ${solWallets}
+
+**Trading Activity:**
+📈 Total Transactions: ${totalTransactions}
+🔗 ETH Transactions: ${ethTransactions}
+🟣 SOL Transactions: ${solTransactions}
+
+**Performance (30 days):**
+✅ Success Rate: ${successRate}%
+📊 Recent Activity: ${recentTx.length} transactions
+
+**Account Status:**
+${userData.premium?.active ? '⭐ Premium Active' : '🆓 Free Plan'}
+📅 Member Since: ${new Date(userData.createdAt).toLocaleDateString()}`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error loading statistics:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading statistics**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Home', callback_data: 'main_menu' }
+          ]]
+        }
+      }
+    );
+  }
+}
+
 // ETH Chain Menu
 async function showEthMenu(ctx) {
   const keyboard = [
