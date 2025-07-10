@@ -266,9 +266,21 @@ async function startBot() {
     
     // Start the bot
     console.log('🤖 Starting Telegram bot...');
-    await bot.launch();
+    await bot.launch({
+      polling: {
+        timeout: 30,
+        limit: 100,
+        allowedUpdates: ['message', 'callback_query']
+      }
+    });
     console.log('✅ Bot is running and ready to receive messages!');
     console.log('📱 Send /start to the bot on Telegram to test');
+    
+    // Set bot commands for UI
+    await bot.telegram.setMyCommands([
+      { command: 'start', description: 'Start the bot' },
+      { command: 'help', description: 'Get help' }
+    ]);
     
   } catch (error) {
     console.error('❌ Failed to start bot:', error.message);
@@ -276,7 +288,17 @@ async function startBot() {
   }
 }
 
-// Graceful shutdown
+// Note: Graceful shutdown handlers moved to after startBot() call
+
+// Start the bot
+startBot();
+
+// Register error handlers
+bot.catch((err, ctx) => {
+  console.log(`❌ Bot error for ${ctx.updateType}:`, err);
+});
+
+// Enable graceful stop
 process.once('SIGINT', () => {
   console.log('🛑 Received SIGINT, shutting down gracefully...');
   cleanupSnipeMonitors();
@@ -290,9 +312,6 @@ process.once('SIGTERM', () => {
   bot.stop('SIGTERM');
   process.exit(0);
 });
-
-// Start the bot
-startBot();
 
 // Helper function to get human-readable strategy display names
 function getStrategyDisplayName(strategy) {
