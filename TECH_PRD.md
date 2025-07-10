@@ -98,11 +98,18 @@
 ```
 
 **Required Implementations**:
-1. Complete SOL buy/sell handler functions
-2. SOL fee collection to TREASURY_WALLET_SOL
-3. Error handling for Jupiter API failures
-4. Transaction confirmation waiting
-5. SOL token balance validation
+1. Complete SOL buy/sell handler functions **using existing UI patterns**
+2. SOL amount selection and review screens **matching ETH styling**
+3. Error handling for Jupiter API failures **with current error format**
+4. Transaction confirmation waiting **using existing progress indicators**
+5. SOL token balance validation **following ETH balance display style**
+
+**UI PRESERVATION REQUIREMENTS**:
+- Use identical button layouts as ETH handlers
+- Maintain emoji prefixes (🟣 for SOL, 🔗 for ETH)
+- Keep existing message formatting and structure
+- Preserve callback_data naming patterns
+- Use same error/success message templates
 
 ### **PRIORITY 2: Mirror Trading UI Integration (Est: 1-2 days)**
 
