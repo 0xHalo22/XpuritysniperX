@@ -1,4 +1,3 @@
-
 // ====================================================================
 // PHASE 3: RISK MANAGEMENT & SECURITY SYSTEM
 // Complete implementation of token safety, transaction safety, and user protection
@@ -71,7 +70,7 @@ class RiskAnalysisEngine {
    */
   async analyzeTokenSafety(tokenAddress, provider) {
     console.log(`🔍 Analyzing token safety: ${tokenAddress}`);
-    
+
     try {
       const analysis = {
         tokenAddress,
@@ -245,7 +244,7 @@ class RiskAnalysisEngine {
       ];
 
       const router = new ethers.Contract(routerAddress, routerAbi, provider);
-      
+
       // Get buy quote
       const buyPath = [wethAddress, tokenAddress];
       const buyAmounts = await router.getAmountsOut(amountToTest, buyPath);
@@ -291,10 +290,10 @@ class RiskAnalysisEngine {
       ];
 
       const contract = new ethers.Contract(tokenAddress, abi, provider);
-      
+
       // Check if contract has unusual transfer logic
       const code = await provider.getCode(tokenAddress);
-      
+
       // Look for suspicious patterns in bytecode
       const suspiciousPatterns = [
         'revert', // Explicit reverts in transfer
@@ -337,7 +336,7 @@ class RiskAnalysisEngine {
       ];
 
       const contract = new ethers.Contract(tokenAddress, blacklistAbi, provider);
-      
+
       // Try to call isBlacklisted function
       try {
         await contract.isBlacklisted(ethers.constants.AddressZero);
@@ -364,7 +363,7 @@ class RiskAnalysisEngine {
 
       // Get contract code
       const code = await provider.getCode(tokenAddress);
-      
+
       if (code === '0x') {
         return { score: 10, issues: ['No contract code found'] };
       }
@@ -439,9 +438,9 @@ class RiskAnalysisEngine {
 
       const factory = new ethers.Contract(factoryAddress, factoryAbi, provider);
       const wethAddress = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
-      
+
       const pairAddress = await factory.getPair(tokenAddress, wethAddress);
-      
+
       if (pairAddress === ethers.constants.AddressZero) {
         return {
           score: 8,
@@ -460,7 +459,7 @@ class RiskAnalysisEngine {
       const pair = new ethers.Contract(pairAddress, pairAbi, provider);
       const [reserve0, reserve1] = await pair.getReserves();
       const token0 = await pair.token0();
-      
+
       // Determine which reserve is ETH
       const ethReserve = token0.toLowerCase() === wethAddress.toLowerCase() ? reserve0 : reserve1;
       const ethLiquidity = ethers.utils.formatEther(ethReserve);
@@ -533,7 +532,7 @@ class RiskAnalysisEngine {
       }
 
       const burnedPercentage = burnedTokens.mul(100).div(totalSupply).toNumber();
-      
+
       if (burnedPercentage > 50) {
         score += 1; // Actually good - shows deflationary mechanism
         issues.push(`${burnedPercentage}% tokens burned (good sign)`);
@@ -952,8 +951,7 @@ class RiskAnalysisEngine {
     if (analyses.tokenSafety) {
       totalRisk += analyses.tokenSafety.overallRisk * 0.4; // 40% weight
       riskCount++;
-    }
-
+ Risk analysis issues corrected.
     if (analyses.transactionSafety) {
       totalRisk += (analyses.transactionSafety.mevRisk || 0) * 0.3; // 30% weight
       riskCount++;
