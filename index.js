@@ -169,24 +169,24 @@ async function recordTransaction(userId, transactionData) {
 
     // Add transaction to database
     await addTransaction(userId, transactionData);
-    
+
     // Also update user data with transaction
     const userData = await loadUserData(userId);
     if (!userData.transactions) {
       userData.transactions = [];
     }
     userData.transactions.push(transactionData);
-    
+
     // Keep only last 100 transactions to prevent bloat
     if (userData.transactions.length > 100) {
       userData.transactions = userData.transactions.slice(-100);
     }
-    
+
     await saveUserData(userId, userData);
-    
+
     console.log(`✅ Transaction recorded for user ${userId}: ${transactionData.type}`);
     return transactionData;
-    
+
   } catch (error) {
     console.log(`❌ Error recording transaction for user ${userId}:`, error.message);
     throw error;
@@ -240,7 +240,7 @@ console.log('🎯 CHUNK 1 LOADED: Sniping data structures and state management r
 function validateEnvironment() {
   const required = ['BOT_TOKEN'];
   const missing = required.filter(key => !process.env[key]);
-  
+
   if (missing.length > 0) {
     console.error('❌ Missing required environment variables:', missing.join(', '));
     console.error('💡 Please set these in the Secrets tab:');
@@ -249,7 +249,7 @@ function validateEnvironment() {
     });
     process.exit(1);
   }
-  
+
   console.log('✅ Environment variables validated');
 }
 
@@ -258,12 +258,12 @@ async function startBot() {
   try {
     // Validate environment
     validateEnvironment();
-    
+
     // Initialize database
     console.log('🗄️ Initializing database...');
     await initialize();
     console.log('✅ Database initialized');
-    
+
     // Start the bot
     console.log('🤖 Starting Telegram bot...');
     await bot.launch({
@@ -275,13 +275,13 @@ async function startBot() {
     });
     console.log('✅ Bot is running and ready to receive messages!');
     console.log('📱 Send /start to the bot on Telegram to test');
-    
+
     // Set bot commands for UI
     await bot.telegram.setMyCommands([
       { command: 'start', description: 'Start the bot' },
       { command: 'help', description: 'Get help' }
     ]);
-    
+
   } catch (error) {
     console.error('❌ Failed to start bot:', error.message);
     process.exit(1);
@@ -1010,26 +1010,26 @@ bot.action('statistics', showStatistics);
 // Statistics Handler
 async function showStatistics(ctx) {
   const userId = ctx.from.id.toString();
-  
+
   try {
     const userData = await loadUserData(userId);
-    const transactions = userData.transactions || [];
-    
+    consttransactions = userData.transactions || [];
+
     // Calculate statistics
     const totalTransactions = transactions.length;
     const ethTransactions = transactions.filter(tx => tx.chain === 'ethereum').length;
     const solTransactions = transactions.filter(tx => tx.chain === 'solana').length;
-    
+
     // Calculate success rate for recent transactions (last 30 days)
     const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
     const recentTx = transactions.filter(tx => tx.timestamp > thirtyDaysAgo);
     const successfulTx = recentTx.filter(tx => tx.status === 'completed' || tx.txHash);
     const successRate = recentTx.length > 0 ? Math.round((successfulTx.length / recentTx.length) * 100) : 0;
-    
+
     // Get wallet counts
     const ethWallets = userData.ethWallets?.length || 0;
     const solWallets = userData.solWallets?.length || 0;
-    
+
     const keyboard = [
       [{ text: '📊 Transaction History', callback_data: 'view_tx_history' }],
       [{ text: '🔙 Back to Home', callback_data: 'main_menu' }]
@@ -1530,7 +1530,7 @@ ${error.message}`,
 // SOL Buy Amount Selection - Shows amount buttons after token address input
 async function showSolBuyAmountSelection(ctx, tokenMint) {
   const userId = ctx.from.id.toString();
-  
+
   try {
     const userData = await loadUserData(userId);
     const walletAddress = await getSolWalletAddress(userId, userData);
@@ -1538,7 +1538,7 @@ async function showSolBuyAmountSelection(ctx, tokenMint) {
 
     // Get token info
     const tokenInfo = await solChain.getTokenInfo(tokenMint);
-    
+
     const keyboard = [
       [
         { text: '💎 0.1 SOL', callback_data: `sol_buy_amount_${tokenMint}_0.1` },
@@ -1592,15 +1592,15 @@ Please try again.`,
 // SOL Buy Review - Shows final confirmation before execution
 async function showSolBuyReview(ctx, tokenMint, amount) {
   const userId = ctx.from.id.toString();
-  
+
   try {
     await ctx.editMessageText('⏳ **Getting swap quote...**\n\nCalculating best route via Jupiter...');
 
     const userData = await loadUserData(userId);
-    
+
     // Get swap quote
     const quote = await solChain.getSwapQuote('sol', tokenMint, amount);
-    
+
     // Calculate fees
     const feePercent = userData.premium?.active ? 0.5 : 1.0;
     const feeCalculation = solChain.calculateFee(amount, feePercent);
@@ -1666,11 +1666,11 @@ async function showSolTokenHoldings(ctx, userId) {
   try {
     const userData = await loadUserData(userId);
     const walletAddress = await getSolWalletAddress(userId, userData);
-    
+
     await ctx.editMessageText('⏳ **Loading your SPL tokens...**\n\nScanning wallet for tokens...');
-    
+
     const tokenHoldings = await solChain.getTokenHoldings(walletAddress);
-    
+
     if (tokenHoldings.length === 0) {
       await ctx.editMessageText(
         `🟣 **SOL SELL TOKEN**
@@ -1693,11 +1693,11 @@ Buy some tokens first to start selling!`,
     // Create buttons for each token (limit to 10 for UI space)
     const keyboard = [];
     const visibleTokens = tokenHoldings.slice(0, 10);
-    
+
     for (const token of visibleTokens) {
       const displayName = `${token.mint.slice(0, 6)}...${token.mint.slice(-4)}`;
       const balance = token.balance.toFixed(6);
-      
+
       keyboard.push([{
         text: `🪙 ${displayName} (${balance})`,
         callback_data: `sol_sell_token_${token.mint}`
@@ -1749,15 +1749,15 @@ bot.action(/^sol_sell_token_(.+)$/, async (ctx) => {
 // SOL Sell Amount Selection - Shows percentage buttons for selling
 async function showSolSellAmountSelection(ctx, tokenMint) {
   const userId = ctx.from.id.toString();
-  
+
   try {
     const userData = await loadUserData(userId);
     const walletAddress = await getSolWalletAddress(userId, userData);
-    
+
     // Get token balance
     const tokenHoldings = await solChain.getTokenHoldings(walletAddress);
     const tokenHolding = tokenHoldings.find(t => t.mint === tokenMint);
-    
+
     if (!tokenHolding) {
       throw new Error('Token not found in wallet');
     }
@@ -1811,17 +1811,17 @@ Please try again.`,
 // SOL Sell Review - Shows final confirmation before execution
 async function showSolSellReview(ctx, tokenMint, amount, amountType) {
   const userId = ctx.from.id.toString();
-  
+
   try {
     await ctx.editMessageText('⏳ **Getting sell quote...**\n\nCalculating best route via Jupiter...');
 
     const userData = await loadUserData(userId);
     const walletAddress = await getSolWalletAddress(userId, userData);
-    
+
     // Get token holdings
     const tokenHoldings = await solChain.getTokenHoldings(walletAddress);
     const tokenHolding = tokenHoldings.find(t => t.mint === tokenMint);
-    
+
     if (!tokenHolding) {
       throw new Error('Token not found in wallet');
     }
@@ -1836,7 +1836,7 @@ async function showSolSellReview(ctx, tokenMint, amount, amountType) {
 
     // Get swap quote
     const quote = await solChain.getSwapQuote(tokenMint, 'sol', sellAmount.toString());
-    
+
     // Calculate fees
     const feePercent = userData.premium?.active ? 0.5 : 1.0;
     const solReceived = parseFloat(quote.amountOut);
@@ -2189,3 +2189,14 @@ Your tokens are safe - no transaction was completed.`,
     );
   }
 });
+
+// ====================================================================
+// START THE BOT - CALL AFTER ALL HANDLERS ARE REGISTERED
+// ====================================================================
+
+console.log('🚀 All handlers registered, starting bot...');
+startBot();
+
+// ====================================================================
+// MISSING SOL BUY/SELL CALLBACK HANDLERS - CRITICAL FOR SOL OPERATION
+// ====================================================================
