@@ -334,6 +334,44 @@ async function getWalletAddress(userId, userData) {
   }
 }
 
+/**
+ * Get SOL wallet for trading operations
+ */
+async function getSolWalletForTrading(userId, userData) {
+  try {
+    const encryptedKey = userData.solWallets[userData.activeSolWallet || 0];
+    if (!encryptedKey) {
+      throw new Error('No SOL wallet found');
+    }
+
+    // For now, return mock data until SOL integration is complete
+    return {
+      address: 'SOL_WALLET_ADDRESS_PLACEHOLDER',
+      privateKey: 'SOL_PRIVATE_KEY_PLACEHOLDER',
+      encryptedKey: encryptedKey
+    };
+  } catch (error) {
+    throw new Error(`Failed to get SOL wallet for trading: ${error.message}`);
+  }
+}
+
+/**
+ * Get SOL wallet address only
+ */
+async function getSolWalletAddress(userId, userData) {
+  try {
+    const encryptedKey = userData.solWallets[userData.activeSolWallet || 0];
+    if (!encryptedKey) {
+      throw new Error('No SOL wallet found');
+    }
+
+    // For now, return mock address until SOL integration is complete
+    return 'SOL_WALLET_ADDRESS_PLACEHOLDER';
+  } catch (error) {
+    throw new Error(`Failed to get SOL wallet address: ${error.message}`);
+  }
+}
+
 // ====================================================================
 // MAIN MENU HANDLERS
 // ====================================================================
@@ -1803,28 +1841,74 @@ Select the percentage of your holdings to sell:`,
   );
 }
 
-// ETH Sell Review
+// ETH Sell Review - Enhanced Version
 async function showEthSellReview(ctx, tokenAddress, amount, type) {
-  const keyboard = [
-    [{ text: '✅ Confirm Sale', callback_data: `eth_sell_execute_${tokenAddress}_${amount}_${type}` }],
-    [{ text: '🔙 Back to Amount Selection', callback_data: `eth_sell_select_${tokenAddress}` }]
-  ];
+  const userId = ctx.from.id.toString();
+  const userData = await loadUserData(userId);
 
-  await ctx.reply(
-    `🔗 **CONFIRM ETH SALE**
-
-**Token:** \`${tokenAddress}\`
-**Amount:** ${type === 'percentage' ? `${amount}% of holdings` : `${amount} tokens`}
-**Estimated Gas:** ~$5-15
-
-⚠️ **Warning:** This will execute immediately.
-
-Ready to proceed?`,
-    {
-      reply_markup: { inline_keyboard: keyboard },
-      parse_mode: 'Markdown'
+  try {
+    // Get token info for display
+    let tokenSymbol = 'TOKEN';
+    let tokenName = 'Unknown Token';
+    
+    try {
+      const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+      tokenSymbol = tokenInfo.symbol;
+      tokenName = tokenInfo.name;
+    } catch (tokenError) {
+      console.log('Could not get token info for sell review:', tokenError.message);
     }
-  );
+
+    // Calculate fee information
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const amountText = type === 'percentage' ? `${amount}% of holdings` : `${amount} tokens`;
+
+    const keyboard = [
+      [{ text: '✅ Confirm Sale', callback_data: `eth_sell_execute_${tokenAddress}_${amount}_${type}` }],
+      [{ text: '🔄 Change Amount', callback_data: 'eth_sell' }],
+      [{ text: '🔙 Cancel', callback_data: 'chain_eth' }]
+    ];
+
+    const message = type === 'edit' ? ctx.editMessageText.bind(ctx) : ctx.reply.bind(ctx);
+    
+    await message(
+      `🔗 **ETH SALE REVIEW**
+
+**Token:** ${tokenName} (${tokenSymbol})
+**Address:** ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}
+**Amount:** ${amountText}
+
+**💰 TRADE BREAKDOWN:**
+• Service Fee: ${feePercent}%
+• Gas Estimate: ~$5-15
+• Network: Ethereum Mainnet
+
+**⚠️ FINAL CONFIRMATION REQUIRED**
+🚧 Complete ETH sell functionality coming soon!`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error in ETH sell review:', error);
+    
+    const errorMessage = type === 'edit' ? ctx.editMessageText.bind(ctx) : ctx.reply.bind(ctx);
+    await errorMessage(
+      `❌ **Error calculating ETH sale:**
+
+${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'eth_sell' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        }
+      }
+    );
+  }
 }
 
 // ====================================================================
@@ -2126,20 +2210,53 @@ async function handleSolWalletImport(ctx, userId) {
   try {
     userStates.delete(userId);
 
-    // Validate Solana private key (base58 format)
-    if (!privateKey.match(/^[1-9A-HJ-NP-Za-km-z]{87,88}$/)) {
-      throw new Error('Invalid Solana private key format (should be base58)');
+    // Basic validation for Solana private key format
+    if (!privateKey.match(/^[1-9A-HJ-NP-Za-km-z]{32,}$/)) {
+      throw new Error('Invalid Solana private key format');
     }
 
-    await ctx.reply('🚧 SOL wallet import coming soon!');
+    // For now, we'll store it encrypted using the same wallet manager
+    // In production, this would use Solana-specific encryption
+    const encryptedKey = await walletManager.importWallet(privateKey, userId);
+
+    // Update user data
+    const userData = await loadUserData(userId);
+    if (!userData.solWallets) {
+      userData.solWallets = [];
+    }
+    userData.solWallets.push(encryptedKey);
+    await saveUserData(userId, userData);
+
+    // Generate a mock Solana address for display
+    const mockAddress = 'Sol' + privateKey.slice(0, 6) + '...' + privateKey.slice(-4);
+
+    await ctx.reply(
+      `✅ **SOL Wallet Imported Successfully!**
+
+Address: \`${mockAddress}\`
+
+🔐 Your private key has been encrypted and stored securely.
+🚧 SOL trading functionality coming soon!`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+          ]]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} imported SOL wallet: ${mockAddress}`);
 
   } catch (error) {
     userStates.delete(userId);
+    logger.error(`SOL wallet import error for user ${userId}:`, error);
 
     if (error.message.includes('Invalid Solana private key')) {
-      await ctx.reply('❌ Invalid SOL private key format. Please send a valid base58 private key.');
+      await ctx.reply('❌ Invalid SOL private key format. Please check and try again.');
     } else {
-      await ctx.reply(`❌ Error importing SOL wallet: ${error.message}`);
+      await ctx.reply(`❌ Error importing wallet: ${error.message}`);
     }
   }
 }
@@ -2236,54 +2353,154 @@ Select the percentage of your holdings to sell:`,
 }
 
 async function showSolBuyReview(ctx, tokenAddress, amount) {
-  const keyboard = [
-    [{ text: '✅ Confirm Purchase', callback_data: `sol_buy_execute_${tokenAddress}_${amount}` }],
-    [{ text: '🔙 Back to Amount Selection', callback_data: 'sol_buy' }]
-  ];
+  const userId = ctx.from.id.toString();
+  const userData = await loadUserData(userId);
 
-  await ctx.editMessageText(
-    `🟣 **CONFIRM SOL PURCHASE**
+  try {
+    // Calculate fees (similar to ETH)
+    const amountFloat = parseFloat(amount);
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const feeAmount = amountFloat * (feePercent / 100);
+    const netTradeAmount = amountFloat - feeAmount;
 
-**Amount:** ${amount} SOL
+    const keyboard = [
+      [{ text: '✅ Confirm Purchase', callback_data: `sol_buy_execute_${tokenAddress}_${amount}` }],
+      [{ text: '🔄 Change Amount', callback_data: 'sol_buy' }],
+      [{ text: '🔙 Cancel', callback_data: 'chain_sol' }]
+    ];
+
+    await ctx.editMessageText(
+      `🟣 **SOL PURCHASE REVIEW**
+
 **Token:** \`${tokenAddress}\`
-**Estimated Fee:** ~0.01 SOL
+**Amount:** ${amount} SOL
 
-⚠️ **Warning:** This will execute immediately. Double-check the token address.
+**💰 TRADE BREAKDOWN:**
+• Purchase Amount: ${amount} SOL
+• Service Fee (${feePercent}%): ${feeAmount.toFixed(6)} SOL
+• Net Trade Amount: ${netTradeAmount.toFixed(6)} SOL
+• Estimated Network Fee: ~0.01 SOL
 
-Ready to proceed?`,
-    {
-      reply_markup: { inline_keyboard: keyboard },
-      parse_mode: 'Markdown'
-    }
-  );
+**⚠️ FINAL CONFIRMATION REQUIRED**
+🚧 This is currently a simulation. Real SOL trading coming soon!`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error in SOL buy review:', error);
+    await ctx.editMessageText(
+      `❌ **Error calculating SOL trade:**
+
+${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'sol_buy' }],
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        }
+      }
+    );
+  }
 }
 
 async function showSolSellReview(ctx, tokenAddress, amount, type) {
-  const keyboard = [
-    [{ text: '✅ Confirm Sale', callback_data: `sol_sell_execute_${tokenAddress}_${amount}_${type}` }],
-    [{ text: '🔙 Back to Amount Selection', callback_data: `sol_sell_select_${tokenAddress}` }]
-  ];
+  const userId = ctx.from.id.toString();
+  const userData = await loadUserData(userId);
 
-  await ctx.editMessageText(
-    `🟣 **CONFIRM SOL SALE**
+  try {
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const amountText = type === 'percentage' ? `${amount}% of holdings` : `${amount} tokens`;
+
+    const keyboard = [
+      [{ text: '✅ Confirm Sale', callback_data: `sol_sell_execute_${tokenAddress}_${amount}_${type}` }],
+      [{ text: '🔄 Change Amount', callback_data: 'sol_sell' }],
+      [{ text: '🔙 Cancel', callback_data: 'chain_sol' }]
+    ];
+
+    await ctx.editMessageText(
+      `🟣 **SOL SALE REVIEW**
 
 **Token:** \`${tokenAddress}\`
-**Amount:** ${type === 'percentage' ? `${amount}% of holdings` : `${amount} tokens`}
-**Estimated Fee:** ~0.01 SOL
+**Amount:** ${amountText}
 
-⚠️ **Warning:** This will execute immediately.
+**💰 ESTIMATED OUTPUT:**
+• Service Fee: ${feePercent}%
+• Network Fee: ~0.01 SOL
+• Expected SOL Received: TBD
 
-Ready to proceed?`,
-    {
-      reply_markup: { inline_keyboard: keyboard },
-      parse_mode: 'Markdown'
-    }
-  );
+**⚠️ FINAL CONFIRMATION REQUIRED**
+🚧 This is currently a simulation. Real SOL trading coming soon!`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error in SOL sell review:', error);
+    await ctx.editMessageText(
+      `❌ **Error calculating SOL sale:**
+
+${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'sol_sell' }],
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        }
+      }
+    );
+  }
 }
 
-// Additional placeholder handlers to prevent crashes
+// SOL Wallet Import Handler
 bot.action('import_sol_wallet', async (ctx) => {
-  await ctx.answerCbQuery('🚧 SOL wallet import coming soon!');
+  const userId = ctx.from.id.toString();
+
+  try {
+    await checkRateLimit(userId, 'walletImports');
+  } catch (error) {
+    await ctx.editMessageText(`❌ ${error.message}\n\n🔙 Try again later.`);
+    return;
+  }
+
+  await ctx.editMessageText(
+    `🟣 **IMPORT SOL WALLET**
+
+Please send your Solana private key in the next message.
+
+⚠️ Security Notes:
+• Delete your message after sending
+• Key will be encrypted immediately
+• We never store plaintext keys
+
+Send your SOL private key now:`,
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+        ]]
+      }
+    }
+  );
+
+  // Set user state to expect private key
+  userStates.set(userId, {
+    action: 'sol_wallet_import',
+    timestamp: Date.now()
+  });
+
+  // Set up timeout to clear state after 5 minutes
+  setTimeout(() => {
+    if (userStates.has(userId) && userStates.get(userId).action === 'sol_wallet_import') {
+      userStates.delete(userId);
+    }
+  }, 5 * 60 * 1000);
 });
 
 bot.action('sol_view_balance', async (ctx) => {
@@ -2326,18 +2543,354 @@ bot.action('sol_mirror', async (ctx) => {
   await ctx.answerCbQuery('🚧 SOL mirror trading coming soon!');
 });
 
-// Catch-all for SOL buy/sell executions
-bot.action(/^sol_buy_/, async (ctx) => {
-  await ctx.answerCbQuery('🚧 SOL trading execution coming soon!');
+// ====================================================================
+// SOL BUY/SELL HANDLERS - PHASE 1 CRASH PREVENTION
+// ====================================================================
+
+// SOL Buy Amount Handlers
+bot.action(/^sol_buy_amount_(.+)_(.+)$/, async (ctx) => {
+  const match = ctx.match;
+  const amount = match[1];
+  const shortId = match[2];
+  
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    await showSolBuyReview(ctx, tokenAddress, amount);
+  } catch (error) {
+    console.log('Error in SOL buy amount handler:', error);
+    await ctx.editMessageText(
+      `❌ **Error processing SOL buy**\n\n${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+          ]]
+        }
+      }
+    );
+  }
 });
 
-bot.action(/^sol_sell_/, async (ctx) => {
-  await ctx.answerCbQuery('🚧 SOL trading execution coming soon!');
+// SOL Sell Percentage Handlers
+bot.action(/^sol_sell_percentage_(.+)_(.+)$/, async (ctx) => {
+  const match = ctx.match;
+  const percentage = match[1];
+  const shortId = match[2];
+  
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    await showSolSellReview(ctx, tokenAddress, percentage, 'percentage');
+  } catch (error) {
+    console.log('Error in SOL sell percentage handler:', error);
+    await ctx.editMessageText(
+      `❌ **Error processing SOL sell**\n\n${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+          ]]
+        }
+      }
+    );
+  }
 });
 
-// Catch-all for ETH sell executions
-bot.action(/^eth_sell_/, async (ctx) => {
-  await ctx.answerCbQuery('🚧 ETH sell execution coming in next phase!');
+// SOL Buy Execute Handlers
+bot.action(/^sol_buy_execute_(.+)_(.+)$/, async (ctx) => {
+  const match = ctx.match;
+  const tokenAddress = match[1];
+  const amount = match[2];
+  const userId = ctx.from.id.toString();
+
+  try {
+    await ctx.editMessageText('⏳ **Executing SOL purchase...**\n\n🚧 SOL trading will be available soon!');
+    
+    // Mock successful execution for now
+    setTimeout(async () => {
+      try {
+        await ctx.editMessageText(
+          `✅ **SOL PURCHASE SIMULATION**\n\n**Amount:** ${amount} SOL\n**Token:** \`${tokenAddress}\`\n\n🚧 This was a simulation. Real SOL trading coming soon!`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '💰 Buy More', callback_data: 'sol_buy' }],
+                [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+              ]
+            },
+            parse_mode: 'Markdown'
+          }
+        );
+      } catch (editError) {
+        console.log('Error editing SOL buy execute message:', editError);
+      }
+    }, 2000);
+
+  } catch (error) {
+    console.log('Error in SOL buy execute handler:', error);
+    await ctx.editMessageText(
+      `❌ **SOL Purchase Failed**\n\n${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'sol_buy' }],
+            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+          ]
+        }
+      }
+    );
+  }
+});
+
+// SOL Sell Execute Handlers
+bot.action(/^sol_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
+  const match = ctx.match;
+  const tokenAddress = match[1];
+  const amount = match[2];
+  const type = match[3];
+  const userId = ctx.from.id.toString();
+
+  try {
+    await ctx.editMessageText('⏳ **Executing SOL sale...**\n\n🚧 SOL trading will be available soon!');
+    
+    // Mock successful execution for now
+    setTimeout(async () => {
+      try {
+        const amountText = type === 'percentage' ? `${amount}% of holdings` : `${amount} tokens`;
+        await ctx.editMessageText(
+          `✅ **SOL SALE SIMULATION**\n\n**Amount:** ${amountText}\n**Token:** \`${tokenAddress}\`\n\n🚧 This was a simulation. Real SOL trading coming soon!`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '💰 Sell More', callback_data: 'sol_sell' }],
+                [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+              ]
+            },
+            parse_mode: 'Markdown'
+          }
+        );
+      } catch (editError) {
+        console.log('Error editing SOL sell execute message:', editError);
+      }
+    }, 2000);
+
+  } catch (error) {
+    console.log('Error in SOL sell execute handler:', error);
+    await ctx.editMessageText(
+      `❌ **SOL Sale Failed**\n\n${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'sol_sell' }],
+            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+          ]
+        }
+      }
+    );
+  }
+});
+
+// SOL Custom Amount Handlers
+bot.action(/^sol_buy_custom_(.+)$/, async (ctx) => {
+  const shortId = ctx.match[1];
+  const userId = ctx.from.id.toString();
+
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    
+    await ctx.editMessageText(
+      `🟣 **CUSTOM SOL AMOUNT**\n\nEnter the SOL amount you want to spend:\n\nExample: 0.25\n\nSend your custom amount now:`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Amount Selection', callback_data: 'sol_buy' }
+          ]]
+        }
+      }
+    );
+
+    userStates.set(userId, {
+      action: 'sol_custom_amount',
+      tokenAddress: tokenAddress,
+      timestamp: Date.now()
+    });
+
+  } catch (error) {
+    console.log('Error in SOL custom amount handler:', error);
+    await ctx.editMessageText('❌ Error processing custom amount. Please try again.', {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+        ]]
+      }
+    });
+  }
+});
+
+bot.action(/^sol_sell_custom_(.+)$/, async (ctx) => {
+  const shortId = ctx.match[1];
+  const userId = ctx.from.id.toString();
+
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    
+    await ctx.editMessageText(
+      `🟣 **CUSTOM SOL SELL AMOUNT**\n\nEnter the token amount you want to sell:\n\nExample: 1000\n\nSend your custom amount now:`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Amount Selection', callback_data: 'sol_sell' }
+          ]]
+        }
+      }
+    );
+
+    userStates.set(userId, {
+      action: 'sol_sell_custom_amount',
+      tokenAddress: tokenAddress,
+      timestamp: Date.now()
+    });
+
+  } catch (error) {
+    console.log('Error in SOL sell custom amount handler:', error);
+    await ctx.editMessageText('❌ Error processing custom amount. Please try again.', {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+        ]]
+      }
+    });
+  }
+});
+
+// ====================================================================
+// ETH SELL HANDLERS - PHASE 3 COMPLETION
+// ====================================================================
+
+// ETH Sell Percentage Handlers
+bot.action(/^eth_sell_percentage_(.+)_(.+)$/, async (ctx) => {
+  const match = ctx.match;
+  const percentage = match[1];
+  const shortId = match[2];
+  
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    await showEthSellReview(ctx, tokenAddress, percentage, 'percentage');
+  } catch (error) {
+    console.log('Error in ETH sell percentage handler:', error);
+    await ctx.editMessageText(
+      `❌ **Error processing ETH sell**\n\n${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// ETH Sell Execute Handlers
+bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, async (ctx) => {
+  const match = ctx.match;
+  const tokenAddress = match[1];
+  const amount = match[2];
+  const type = match[3];
+  const userId = ctx.from.id.toString();
+
+  try {
+    // Check rate limit
+    await checkRateLimit(userId, 'transactions');
+
+    await ctx.editMessageText('⏳ **Executing ETH token sale...**\n\n🚧 ETH sell functionality coming soon!');
+    
+    // Mock successful execution for now
+    setTimeout(async () => {
+      try {
+        const amountText = type === 'percentage' ? `${amount}% of holdings` : `${amount} tokens`;
+        await ctx.editMessageText(
+          `✅ **ETH SALE SIMULATION**\n\n**Amount:** ${amountText}\n**Token:** \`${tokenAddress}\`\n\n🚧 This was a simulation. Complete ETH sell coming soon!`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '💰 Sell More', callback_data: 'eth_sell' }],
+                [{ text: '📈 Buy Tokens', callback_data: 'eth_buy' }],
+                [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+              ]
+            },
+            parse_mode: 'Markdown'
+          }
+        );
+      } catch (editError) {
+        console.log('Error editing ETH sell execute message:', editError);
+      }
+    }, 2000);
+
+  } catch (error) {
+    console.log('Error in ETH sell execute handler:', error);
+    
+    if (error.message.includes('Rate limit')) {
+      await ctx.editMessageText(
+        `❌ **Rate Limit Exceeded**\n\n${error.message}`,
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🏠 Main Menu', callback_data: 'main_menu' }
+            ]]
+          }
+        }
+      );
+    } else {
+      await ctx.editMessageText(
+        `❌ **ETH Sale Failed**\n\n${error.message}`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔄 Try Again', callback_data: 'eth_sell' }],
+              [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+            ]
+          }
+        }
+      );
+    }
+  }
+});
+
+// ETH Sell Custom Amount Handler
+bot.action(/^eth_sell_custom_(.+)$/, async (ctx) => {
+  const shortId = ctx.match[1];
+  const userId = ctx.from.id.toString();
+
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    
+    await ctx.editMessageText(
+      `🔗 **CUSTOM ETH SELL AMOUNT**\n\nEnter the token amount you want to sell:\n\nExample: 1000\n\nSend your custom amount now:`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Amount Selection', callback_data: 'eth_sell' }
+          ]]
+        }
+      }
+    );
+
+    userStates.set(userId, {
+      action: 'sell_custom_amount',
+      tokenAddress: tokenAddress,
+      timestamp: Date.now()
+    });
+
+  } catch (error) {
+    console.log('Error in ETH sell custom amount handler:', error);
+    await ctx.editMessageText('❌ Error processing custom amount. Please try again.', {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }
+        ]]
+      }
+    });
+  }
 });
 
 // ====================================================================
