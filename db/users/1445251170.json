@@ -14,7 +14,7 @@
   "ethWallets": [
     "7d2aca93dc0fc54d28ef6f87740049be:39cba12e70a97fdd1be3b01be9091a2f9881eb108e62dc17415a346ca33b207c9cae89137880b23550bf066d9a38946564435194dcbf86303d083e5d60da9a22615d3ee2a64f1c17453e183779a3e83b"
   ],
-  "lastActive": 1752191187875,
+  "lastActive": 1752191463237,
   "solWallets": [],
   "snipeConfig": {
     "active": false,
@@ -128,6 +128,79 @@
       "tokenSymbol": "RNS",
       "amount": "283003475.7768404",
       "timestamp": 1752191187874
+    },
+    {
+      "type": "sell",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "tokenSymbol": "RNS",
+      "amount": "9.99e-7",
+      "percentage": 100,
+      "txHash": "0x3ab027028d3c09ff53968c2ea5e9527983cb5d34f9474c307e741e8ffe1c8afb",
+      "status": "sent",
+      "timestamp": 1752191355571,
+      "chain": "ethereum"
+    },
+    {
+      "txHash": "0x3ab027028d3c09ff53968c2ea5e9527983cb5d34f9474c307e741e8ffe1c8afb",
+      "type": "sell",
+      "status": "confirmed",
+      "blockNumber": 22892168,
+      "gasUsed": "115395",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "tokenSymbol": "RNS",
+      "amount": "9.99e-7",
+      "timestamp": 1752191367946
+    },
+    {
+      "type": "buy",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "amount": "0.001",
+      "tradeAmount": "0.00099",
+      "feeAmount": "0.00001",
+      "txHash": "0xe1fe264d35199f70314aad2435985d47ef2996609aa1d81c6c7c41fab1d9a56d",
+      "status": "sent",
+      "timestamp": 1752191387638,
+      "chain": "ethereum"
+    },
+    {
+      "txHash": "0xe1fe264d35199f70314aad2435985d47ef2996609aa1d81c6c7c41fab1d9a56d",
+      "type": "buy",
+      "status": "confirmed",
+      "blockNumber": 22892172,
+      "gasUsed": "104421",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "amount": "0.00099",
+      "tokenSymbol": "RNS",
+      "timestamp": 1752191416038
+    },
+    {
+      "txHash": "0x0caf89f51abea3364cd3794c2409ebaeabbbd06a378e6cd7dbced0ce353b02f9",
+      "type": "fee",
+      "status": "sent",
+      "amount": "0.00001",
+      "timestamp": 1752191418705
+    },
+    {
+      "type": "sell",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "tokenSymbol": "RNS",
+      "amount": "75384431.75471137",
+      "percentage": 100,
+      "txHash": "0xd0f40ebd75cef73315eb5102479c4a2ea8f2b12293a919dcbb3296d7078a8c79",
+      "status": "sent",
+      "timestamp": 1752191454818,
+      "chain": "ethereum"
+    },
+    {
+      "txHash": "0xd0f40ebd75cef73315eb5102479c4a2ea8f2b12293a919dcbb3296d7078a8c79",
+      "type": "sell",
+      "status": "confirmed",
+      "blockNumber": 22892176,
+      "gasUsed": "115551",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "tokenSymbol": "RNS",
+      "amount": "75384431.75471137",
+      "timestamp": 1752191463237
     }
   ],
   "mirrorTargets": [],
