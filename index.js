@@ -7378,6 +7378,178 @@ Please send a valid SOL amount (e.g., 0.5)`,
   }
 }
 
+// Add missing showSolBuyReviewReply function  
+async function showSolBuyReviewReply(ctx, tokenMint, amount) {
+  const userId = ctx.from.id.toString();
+  const userData = await loadUserData(userId);
+
+  try {
+    const loadingMessage = await ctx.reply('⏳ **Calculating trade details...**');
+
+    // Calculate fees
+    const amountFloat = parseFloat(amount);
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const feeCalculation = solChain.calculateFee(amount, feePercent);
+
+    // Get wallet info
+    const wallet = await getSolWalletForTrading(userId, userData);
+    const balance = await solChain.getBalance(wallet.address);
+    const balanceFloat = parseFloat(balance);
+
+    // Estimate fees
+    const gasEstimate = await solChain.getGasPrice();
+    const totalCost = amountFloat + parseFloat(gasEstimate.formatted.totalFeeSOL);
+
+    // Delete loading message
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, loadingMessage.message_id);
+    } catch (deleteError) {
+      // Ignore if we can't delete
+    }
+
+    if (totalCost > balanceFloat) {
+      await ctx.reply(
+        `❌ **Insufficient Balance**
+
+**Required:** ${totalCost.toFixed(6)} SOL
+**Available:** ${balance} SOL
+**Shortage:** ${(totalCost - balanceFloat).toFixed(6)} SOL
+
+Please add more SOL to your wallet.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔄 Try Different Amount', callback_data: `sol_buy_retry_${tokenMint}` }],
+              [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    const keyboard = [
+      [{ text: '✅ Confirm Purchase', callback_data: `sol_buy_execute_${tokenMint}_${amount}` }],
+      [{ text: '🔄 Change Amount', callback_data: `sol_buy_retry_${tokenMint}` }],
+      [{ text: '🔙 Cancel', callback_data: 'chain_sol' }]
+    ];
+
+    await ctx.reply(
+      `🟣 **SOL PURCHASE REVIEW**
+
+**Token:** ${tokenMint.slice(0, 8)}...${tokenMint.slice(-8)}
+
+**💰 TRADE BREAKDOWN:**
+• Purchase Amount: ${amount} SOL
+• Service Fee (${feePercent}%): ${feeCalculation.feeAmount} SOL
+• Net Trade Amount: ${feeCalculation.netAmount} SOL
+• Gas Estimate: ${gasEstimate.formatted.totalFeeSOL} SOL
+• **Total Cost: ${totalCost.toFixed(6)} SOL**
+
+**⚠️ FINAL CONFIRMATION REQUIRED**`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error in SOL buy review:', error);
+    await ctx.reply(
+      `❌ **Error calculating trade:**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'sol_buy' }],
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// Add missing handleSolSellTokenAddress function
+async function handleSolSellTokenAddress(ctx, userId) {
+  const tokenMint = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    if (!solChain.isValidAddress(tokenMint)) {
+      throw new Error('Invalid Solana mint address format');
+    }
+
+    const validatingMessage = await ctx.reply('⏳ **Validating token...**');
+
+    const tokenInfo = await solChain.getTokenInfo(tokenMint);
+
+    // Delete the "validating" message
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, validatingMessage.message_id);
+    } catch (deleteError) {
+      // Ignore if we can't delete the message
+    }
+
+    await showSolSellAmountSelectionReply(ctx, tokenMint);
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid SPL token mint address.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'sol_sell_manual' }],
+            [{ text: '🔙 Back to Holdings', callback_data: 'sol_sell' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+}
+
+// Add missing handleSolSellCustomAmount function
+async function handleSolSellCustomAmount(ctx, userId, tokenMint) {
+  const amount = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0) {
+      throw new Error('Invalid amount format');
+    }
+
+    await showSolSellReviewReply(ctx, tokenMint, amountFloat, 'custom');
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid token amount (e.g., 1000)`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: `sol_sell_c_${tokenMint}` }],
+            [{ text: '🔙 Back to Amount Selection', callback_data: `sol_sell_select_${tokenMint}` }]
+          ]
+        }
+      }
+    );
+  }
+}
+
 // Handle SOL sell token address input
 async function handleSolSellTokenAddress(ctx, userId) {
   const tokenMint = ctx.message.text.trim();
