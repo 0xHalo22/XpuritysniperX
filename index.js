@@ -4746,4 +4746,3 @@ console.log('🚀 SNIPING ENGINE FULLY INTEGRATED!');
 
 // Start the bot with enhanced sniping capabilities
 startBot();
-
