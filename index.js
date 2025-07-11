@@ -509,6 +509,7 @@ bot.action('sol_snipe', showSolSnipe);
 
 // ETH Buy amount handlers
 bot.action(/^eth_buy_amount_(.+)_(.+)$/, handleEthBuyAmount);
+bot.action(/^eth_buy_custom_(.+)$/, handleEthBuyCustom);
 bot.action(/^eth_buy_execute_(.+)_(.+)$/, handleEthBuyExecute);
 
 // ETH Sell handlers
@@ -1332,6 +1333,49 @@ async function handleEthBuyAmount(ctx) {
   }
 }
 
+// Custom amount handler
+async function handleEthBuyCustom(ctx) {
+  const userId = ctx.from.id.toString();
+  const shortId = ctx.match[1];
+
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+
+    // Set user state for custom amount input
+    userStates.set(userId, {
+      action: 'entering_custom_amount',
+      tokenAddress: tokenAddress,
+      shortId: shortId,
+      timestamp: Date.now()
+    });
+
+    await ctx.editMessageText(
+      `💎 **CUSTOM AMOUNT - ${tokenInfo.symbol}**
+
+📍 **Token:** ${tokenInfo.name} (${tokenInfo.symbol})
+📄 **Contract:** \`${tokenAddress}\`
+
+💰 **Enter the ETH amount you want to spend:**
+
+**Examples:**
+• 0.1 (for 0.1 ETH)
+• 1.5 (for 1.5 ETH)
+• 0.05 (for 0.05 ETH)
+
+🔙 Send /cancel to go back`,
+      { parse_mode: 'Markdown' }
+    );
+
+  } catch (error) {
+    await ctx.editMessageText(`❌ Error: ${error.message}`, {
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]]
+      }
+    });
+  }
+}
+
 async function handleEthBuyExecute(ctx) {
   const userId = ctx.from.id.toString();
   const match = ctx.match;
@@ -2019,11 +2063,40 @@ async function trackRevenue(feeAmount) {
 // TEXT MESSAGE HANDLERS
 // ====================================================================
 
+// Cancel command handler
+bot.command('cancel', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  userStates.delete(userId);
+  
+  await ctx.reply('❌ **Operation cancelled**', {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+      ]
+    },
+    parse_mode: 'Markdown'
+  });
+});
+
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id.toString();
   const userState = userStates.get(userId);
 
   if (!userState) return;
+
+  // Check for cancel command
+  if (ctx.message.text.toLowerCase() === '/cancel') {
+    userStates.delete(userId);
+    await ctx.reply('❌ **Operation cancelled**', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    });
+    return;
+  }
 
   try {
     switch (userState.action) {
@@ -2040,7 +2113,7 @@ bot.on('text', async (ctx) => {
         break;
 
       case 'entering_custom_amount':
-        await handleCustomAmount(ctx, userId, userState.tokenAddress);
+        await handleCustomAmount(ctx, userId, userState);
         break;
 
       default:
@@ -2227,7 +2300,7 @@ Please send a valid token contract address.`,
 }
 
 // Custom amount handler
-async function handleCustomAmount(ctx, userId, tokenAddress) {
+async function handleCustomAmount(ctx, userId, userState) {
   const amount = ctx.message.text.trim();
 
   try {
@@ -2238,23 +2311,76 @@ async function handleCustomAmount(ctx, userId, tokenAddress) {
       throw new Error('Invalid amount. Please enter a positive number.');
     }
 
-    // Continue with buy flow using custom amount
+    if (amountFloat < 0.001) {
+      throw new Error('Minimum amount is 0.001 ETH');
+    }
+
+    if (amountFloat > 100) {
+      throw new Error('Maximum amount is 100 ETH');
+    }
+
+    const tokenAddress = userState.tokenAddress;
+    const userData = await loadUserData(userId);
+    const wallet = await getWalletForTrading(userId, userData);
+
+    // Check balance
+    const balance = await ethChain.getETHBalance(wallet.address);
+    const balanceFloat = parseFloat(balance);
+
+    if (balanceFloat < amountFloat + 0.02) { // Amount + gas buffer
+      await ctx.reply(`❌ Insufficient balance. Need ${amountFloat + 0.02} ETH, have ${balance} ETH`, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+          ]
+        }
+      });
+      return;
+    }
+
+    // Get token info and quote
     const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const amountWei = ethers.utils.parseEther(amountFloat.toString());
+    const quote = await ethChain.getSwapQuote(ethChain.contracts.WETH, tokenAddress, amountWei);
+    const expectedTokens = parseFloat(ethers.utils.formatUnits(quote.outputAmount, tokenInfo.decimals));
+
+    // Calculate fees
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const feeAmount = amountFloat * (feePercent / 100);
+    const netTradeAmount = amountFloat - feeAmount;
+
     const shortId = storeTokenMapping(tokenAddress);
 
-    // Simulate the amount selection
-    await handleEthBuyAmount({
-      match: [null, amountFloat.toString(), shortId],
-      from: { id: parseInt(userId) },
-      answerCbQuery: async (msg, opts) => {},
-      editMessageText: async (text, opts) => {
-        await ctx.reply(text, opts);
-      }
+    const message = `🔥 **CONFIRM CUSTOM BUY ORDER**
+
+🎯 **Token:** ${tokenInfo.symbol}
+💰 **Total Amount:** ${amountFloat} ETH
+💸 **Fee (${feePercent}%):** ${feeAmount.toFixed(4)} ETH
+📊 **Trade Amount:** ${netTradeAmount.toFixed(4)} ETH
+🎁 **Expected:** ~${expectedTokens.toFixed(2)} ${tokenInfo.symbol}
+
+⚠️ **Gas fees apply separately**`;
+
+    const keyboard = [
+      [{ text: '✅ Confirm Buy', callback_data: `eth_buy_execute_${amountFloat}_${shortId}` }],
+      [{ text: '❌ Cancel', callback_data: 'chain_eth' }]
+    ];
+
+    await ctx.reply(message, {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
     });
 
   } catch (error) {
     userStates.delete(userId);
-    await ctx.reply(`❌ Error: ${error.message}`);
+    await ctx.reply(`❌ Error: ${error.message}`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Try Again', callback_data: 'eth_buy' }],
+          [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+        ]
+      }
+    });
   }
 }
 
