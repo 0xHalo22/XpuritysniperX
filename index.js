@@ -1,6 +1,8 @@
+
 // ====================================================================
 // PURITY SNIPER BOT 
 // ====================================================================
+
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const fs = require('fs').promises;
@@ -413,6 +415,443 @@ Choose your action:`,
     }
   );
 }
+
+// ====================================================================
+// ETH SNIPE TOKEN - COMPLETE IMPLEMENTATION
+// ====================================================================
+
+// Enhanced ETH Snipe Token Handler
+bot.action('eth_snipe', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const userData = await loadUserData(userId);
+
+    // Check if user has ETH wallet
+    if (!userData.ethWallets || userData.ethWallets.length === 0) {
+      await ctx.editMessageText(
+        `🎯 **ETH SNIPE TOKEN**
+
+❌ No ETH wallet found. Import a wallet first to start sniping.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '➕ Import ETH Wallet', callback_data: 'eth_wallet_import' }],
+              [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    await showSnipeConfiguration(ctx, userData);
+
+  } catch (error) {
+    console.log('Error in eth_snipe handler:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading snipe configuration**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// Show snipe configuration screen
+async function showSnipeConfiguration(ctx, userData) {
+  const userId = ctx.from.id.toString();
+  const snipeConfig = userData.snipeConfig || defaultSnipeConfig;
+
+  // Get current wallet info
+  let walletInfo = 'Unknown';
+  try {
+    const address = await getWalletAddress(userId, userData);
+    const balance = await ethChain.getETHBalance(address);
+    walletInfo = `${address.slice(0, 6)}...${address.slice(-4)} (${balance} ETH)`;
+  } catch (error) {
+    walletInfo = 'Error loading wallet';
+  }
+
+  // Get snipe statistics
+  const snipeStats = await getSnipeStatistics(userId);
+
+  const keyboard = [
+    [{ 
+      text: snipeConfig.active ? '⏸️ PAUSE SNIPING' : '▶️ START SNIPING', 
+      callback_data: snipeConfig.active ? 'snipe_pause' : 'snipe_start' 
+    }],
+    [
+      { text: `💰 Amount: ${snipeConfig.amount} ETH`, callback_data: 'snipe_config_amount' },
+      { text: `⚡ Slippage: ${snipeConfig.slippage}%`, callback_data: 'snipe_config_slippage' }
+    ],
+    [
+      { text: '📊 Snipe History', callback_data: 'snipe_history' },
+      { text: `⛽ Max Gas: ${snipeConfig.maxGasPrice} gwei`, callback_data: 'snipe_config_gas' }
+    ],
+    [
+      { text: `🎯 Strategy: ${getStrategyDisplayName(snipeConfig.strategy)}`, callback_data: 'snipe_config_strategy' }
+    ],
+    [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+  ];
+
+  const statusIcon = snipeConfig.active ? '🟢' : '🔴';
+  const statusText = snipeConfig.active ? 'ACTIVE - Monitoring for opportunities' : 'PAUSED - Click Start to begin sniping';
+
+  await ctx.editMessageText(
+    `🎯 **ETH SNIPE CONFIGURATION**
+
+**Wallet:** ${walletInfo}
+**Status:** ${statusIcon} ${statusText}
+
+**⚙️ CURRENT SETTINGS:**
+- **Amount:** ${snipeConfig.amount} ETH per snipe
+- **Strategy:** ${getStrategyDisplayName(snipeConfig.strategy)}
+- **Slippage:** ${snipeConfig.slippage}%
+- **Max Gas:** ${snipeConfig.maxGasPrice} gwei
+- **Rate Limit:** ${snipeConfig.maxPerHour} snipes/hour
+
+**📊 TODAY'S STATS:**
+- **Attempts:** ${snipeStats.todayAttempts}
+- **Successful:** ${snipeStats.todaySuccessful}
+- **Success Rate:** ${snipeStats.successRate}%
+
+${snipeConfig.active ? 
+  '⚡ **Ready to snipe new pairs on Uniswap!**' : 
+  '💡 **Configure your settings and start sniping**'}`,
+    { 
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+}
+
+// Start sniping handler
+bot.action('snipe_start', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const userData = await loadUserData(userId);
+
+    // Validate wallet and balance
+    const wallet = await getWalletForTrading(userId, userData);
+    const balance = await ethChain.getETHBalance(wallet.address);
+    const balanceFloat = parseFloat(balance);
+
+    const snipeAmount = userData.snipeConfig?.amount || 0.1;
+    const minRequiredBalance = snipeAmount + 0.02; // Amount + gas buffer
+
+    if (balanceFloat < minRequiredBalance) {
+      await ctx.editMessageText(
+        `❌ **Insufficient Balance for Sniping**
+
+**Required:** ${minRequiredBalance.toFixed(4)} ETH
+**Available:** ${balance} ETH
+**Shortage:** ${(minRequiredBalance - balanceFloat).toFixed(4)} ETH
+
+Please add more ETH to your wallet before starting sniping.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '💰 Adjust Amount', callback_data: 'snipe_config_amount' }],
+              [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    // Update user config to active
+    await updateSnipeConfig(userId, { active: true });
+
+    // Start monitoring
+    await startSnipeMonitoring(userId);
+
+    await ctx.editMessageText(
+      `🔥 **SNIPING ACTIVATED!**
+
+✅ **Monitoring for opportunities...**
+⚡ **Ready to snipe when targets are found!**
+
+**Active Settings:**
+• Amount: ${snipeAmount} ETH per snipe
+• Strategy: ${userData.snipeConfig.strategy}
+• Slippage: ${userData.snipeConfig.slippage}%
+
+**🔔 You will be notified of all snipe attempts**
+
+**⚠️ Warning:** Sniping is high-risk. Only snipe what you can afford to lose.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⏸️ Pause Sniping', callback_data: 'snipe_pause' }],
+            [{ text: '⚙️ Adjust Settings', callback_data: 'eth_snipe' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} started sniping with ${snipeAmount} ETH`);
+
+  } catch (error) {
+    console.log('Error starting sniping:', error);
+    await ctx.editMessageText(
+      `❌ **Failed to start sniping**
+
+${error.message}
+
+Please check your wallet configuration and try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// Pause sniping handler
+bot.action('snipe_pause', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    // Stop monitoring
+    await stopSnipeMonitoring(userId);
+
+    // Update user config to inactive
+    await updateSnipeConfig(userId, { active: false });
+
+    await ctx.editMessageText(
+      `⏸️ **SNIPING PAUSED**
+
+🔴 **No longer monitoring for new pairs**
+💡 **Your settings have been saved**
+
+You can resume sniping anytime by clicking Start Sniping.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '▶️ Resume Sniping', callback_data: 'snipe_start' }],
+            [{ text: '📊 View History', callback_data: 'snipe_history' }],
+            [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} paused sniping`);
+
+  } catch (error) {
+    console.log('Error pausing sniping:', error);
+    await ctx.editMessageText(
+      `❌ **Error pausing sniping**
+
+${error.message}
+
+Sniping may still be active. Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// Configuration handlers
+bot.action('snipe_config_amount', async (ctx) => {
+  const keyboard = [
+    [
+      { text: '0.01 ETH', callback_data: 'snipe_set_amount_0.01' },
+      { text: '0.05 ETH', callback_data: 'snipe_set_amount_0.05' }
+    ],
+    [
+      { text: '0.1 ETH', callback_data: 'snipe_set_amount_0.1' },
+      { text: '0.5 ETH', callback_data: 'snipe_set_amount_0.5' }
+    ],
+    [
+      { text: '1 ETH', callback_data: 'snipe_set_amount_1' },
+      { text: '2 ETH', callback_data: 'snipe_set_amount_2' }
+    ],
+    [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+  ];
+
+  await ctx.editMessageText(
+    `💰 **SNIPE AMOUNT CONFIGURATION**
+
+Select the ETH amount to use for each snipe attempt:
+
+**⚠️ Important:**
+• Higher amounts = better chance to get tokens
+• Lower amounts = less risk per snipe
+• You need extra ETH for gas fees (~0.02-0.05 ETH)
+
+**Current wallet balance will be checked before each snipe**`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+bot.action('snipe_config_slippage', async (ctx) => {
+  const keyboard = [
+    [
+      { text: '5%', callback_data: 'snipe_set_slippage_5' },
+      { text: '10%', callback_data: 'snipe_set_slippage_10' }
+    ],
+    [
+      { text: '15%', callback_data: 'snipe_set_slippage_15' },
+      { text: '20%', callback_data: 'snipe_set_slippage_20' }
+    ],
+    [
+      { text: '30%', callback_data: 'snipe_set_slippage_30' },
+      { text: '50%', callback_data: 'snipe_set_slippage_50' }
+    ],
+    [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+  ];
+
+  await ctx.editMessageText(
+    `⚡ **SLIPPAGE CONFIGURATION**
+
+Select maximum slippage tolerance for snipe attempts:
+
+**💡 Recommendations:**
+• **5-10%:** Conservative, fewer successful snipes
+• **15-20%:** Balanced approach
+• **30-50%:** Aggressive, higher success rate but more risk
+
+**⚠️ Warning:** Higher slippage = you may receive fewer tokens than expected`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// Strategy configuration
+bot.action('snipe_config_strategy', async (ctx) => {
+  const keyboard = [
+    [{ text: '🆕 New Pairs (Degen Mode)', callback_data: 'snipe_set_strategy_new_pairs' }],
+    [{ text: '💧 First Liquidity Events', callback_data: 'snipe_set_strategy_first_liquidity' }],
+    [{ text: '🔧 Contract Methods', callback_data: 'snipe_set_strategy_contract_methods' }],
+    [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+  ];
+
+  await ctx.editMessageText(
+    `🎯 **SNIPE STRATEGY CONFIGURATION**
+
+Choose your sniping strategy:
+
+**🆕 New Pairs (Degen Mode):**
+• Monitors ALL new Uniswap pairs
+• Automatic sniping when any new pair is created
+• High volume, high risk/reward
+
+**💧 First Liquidity Events:**
+• Monitor specific tokens you add
+• Snipe when target tokens get liquidity
+• Surgical precision approach
+
+**🔧 Contract Methods:**
+• Monitor specific contract method calls
+• Advanced strategy for technical users
+• Snipe based on contract interactions
+
+Select your preferred strategy:`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// Amount setting handlers
+bot.action(/^snipe_set_amount_(.+)$/, async (ctx) => {
+  const amount = parseFloat(ctx.match[1]);
+  const userId = ctx.from.id.toString();
+
+  try {
+    await updateSnipeConfig(userId, { amount: amount });
+
+    await ctx.editMessageText(
+      `✅ **Snipe Amount Updated**
+
+**New Amount:** ${amount} ETH per snipe
+
+This amount will be used for each automatic snipe attempt.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⚙️ Other Settings', callback_data: 'eth_snipe' }],
+            [{ text: '🔙 Back to Amount Config', callback_data: 'snipe_config_amount' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    await ctx.answerCbQuery(`✅ Amount set to ${amount} ETH`);
+
+  } catch (error) {
+    console.log('Error setting amount:', error);
+    await ctx.answerCbQuery('❌ Failed to update amount');
+  }
+});
+
+// Slippage setting handlers
+bot.action(/^snipe_set_slippage_(\d+)$/, async (ctx) => {
+  const slippage = parseInt(ctx.match[1]);
+  const userId = ctx.from.id.toString();
+
+  try {
+    await updateSnipeConfig(userId, { slippage: slippage });
+
+    await ctx.editMessageText(
+      `✅ **Slippage Updated**
+
+**New Slippage:** ${slippage}%
+
+${slippage <= 10 ? 
+        '💡 **Conservative:** Lower chance of success but better prices' : 
+        slippage <= 20 ? 
+        '⚡ **Balanced:** Good compromise between speed and price' : 
+        '🔥 **Aggressive:** Higher success rate but may get fewer tokens'
+      }`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⚙️ Other Settings', callback_data: 'eth_snipe' }],
+            [{ text: '🔙 Back to Slippage Config', callback_data: 'snipe_config_slippage' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    await ctx.answerCbQuery(`✅ Slippage set to ${slippage}%`);
+
+  } catch (error) {
+    console.log('Error setting slippage:', error);
+    await ctx.answerCbQuery('❌ Failed to update slippage');
+  }
+});
 
 // ====================================================================
 // ETH WALLET MANAGEMENT
@@ -1096,58 +1535,6 @@ Mirror trading feature coming soon! This will allow you to automatically copy tr
 }
 
 // ====================================================================
-// UTILITY FUNCTIONS
-// ====================================================================
-
-// Helper function to record transaction
-async function recordTransaction(userId, transactionData) {
-  try {
-    const userData = await loadUserData(userId);
-
-    if (!userData.transactions) {
-      userData.transactions = [];
-    }
-
-    // Add snipe-specific metadata
-    if (transactionData.type === 'snipe') {
-      transactionData.autoExecuted = true;
-      transactionData.snipeStrategy = transactionData.strategy || 'unknown';
-      transactionData.snipeAttemptTime = Date.now();
-    }
-
-    userData.transactions.push(transactionData);
-
-    // Keep only last 100 transactions
-    if (userData.transactions.length > 100) {
-      userData.transactions = userData.transactions.slice(-100);
-    }
-
-    await saveUserData(userId, userData);
-
-  } catch (error) {
-    console.log('Error recording transaction:', error);
-  }
-}
-
-// Helper function to track revenue
-async function trackRevenue(feeAmount) {
-  try {
-    // Log to revenue tracking system
-    const revenueData = {
-      amount: feeAmount,
-      currency: 'ETH',
-      timestamp: Date.now(),
-      type: 'trading_fee'
-    };
-
-    logger.info('Revenue collected:', revenueData);
-
-  } catch (error) {
-    console.log('Error tracking revenue:', error);
-  }
-}
-
-// ====================================================================
 // SNIPE EXECUTION FUNCTION
 // ====================================================================
 
@@ -1269,36 +1656,189 @@ async function executeSnipeBuy(userId, tokenAddress, amount, triggerTxHash) {
 }
 
 // ====================================================================
-// BOT STARTUP
+// MONITORING FUNCTIONS
 // ====================================================================
 
-async function startBot() {
+async function startSnipeMonitoring(userId) {
   try {
-    // Create logs directory
-    await fs.mkdir(path.join(__dirname, 'logs'), { recursive: true });
+    const userData = await loadUserData(userId);
+    const snipeConfig = userData.snipeConfig;
 
-    // Create users database directory
-    await fs.mkdir(path.join(__dirname, 'db', 'users'), { recursive: true });
+    if (activeSnipeMonitors.has(userId)) {
+      console.log(`⚠️ Snipe monitoring already active for user ${userId}`);
+      return;
+    }
 
-    logger.info('Bot directories initialized');
+    console.log(`🎯 Starting snipe monitoring for user ${userId} with strategy: ${snipeConfig.strategy}`);
 
-    // Launch bot
-    await bot.launch();
-
-    logger.info('🚀 Purity Sniper Bot is running!');
-    console.log('🚀 Purity Sniper Bot is running!');
-    console.log('✅ Ready for trading!');
+    // Route to appropriate monitoring strategy
+    if (snipeConfig.strategy === 'new_pairs') {
+      await startDegenModeMonitoring(userId);
+    } else if (snipeConfig.strategy === 'first_liquidity') {
+      await startTargetedLiquidityMonitoring(userId);
+    } else if (snipeConfig.strategy === 'contract_methods') {
+      await startMethodMonitoring(userId);
+    } else {
+      throw new Error(`Unknown strategy: ${snipeConfig.strategy}`);
+    }
 
   } catch (error) {
-    logger.error('Failed to start bot:', error);
-    console.log('❌ Bot startup failed:', error.message);
-    process.exit(1);
+    console.log(`❌ Failed to start snipe monitoring for user ${userId}:`, error.message);
+    throw error;
   }
 }
 
-// Graceful shutdown
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+async function startDegenModeMonitoring(userId) {
+  try {
+    const userData = await loadUserData(userId);
+    const snipeConfig = userData.snipeConfig;
+
+    console.log(`🚨 Starting DEGEN MODE monitoring for user ${userId} - will snipe ALL new pairs!`);
+
+    const provider = await ethChain.getProvider();
+    const uniswapV2Factory = '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f';
+    const pairCreatedTopic = '0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31aaaffd8d4';
+
+    const filter = {
+      address: uniswapV2Factory,
+      topics: [pairCreatedTopic]
+    };
+
+    const eventHandler = async (log) => {
+      try {
+        console.log(`🔥 NEW PAIR DETECTED for user ${userId}! TX: ${log.transactionHash}`);
+
+        const abiDecoder = new ethers.utils.Interface([
+          'event PairCreated(address indexed token0, address indexed token1, address pair, uint256)'
+        ]);
+
+        const decoded = abiDecoder.parseLog(log);
+        const token0 = decoded.args.token0;
+        const token1 = decoded.args.token1;
+        const pairAddress = decoded.args.pair;
+
+        console.log(`📊 Pair details: Token0=${token0}, Token1=${token1}, Pair=${pairAddress}`);
+
+        const wethAddress = ethChain.contracts.WETH.toLowerCase();
+        let newTokenAddress;
+
+        if (token0.toLowerCase() === wethAddress) {
+          newTokenAddress = token1;
+        } else if (token1.toLowerCase() === wethAddress) {
+          newTokenAddress = token0;
+        } else {
+          console.log(`⚠️ Neither token is WETH, skipping pair: ${token0}, ${token1}`);
+          return;
+        }
+
+        console.log(`🎯 Target token identified: ${newTokenAddress}`);
+
+        await executeSnipeBuy(userId, newTokenAddress, snipeConfig.amount, log.transactionHash);
+
+      } catch (error) {
+        console.log(`❌ Error processing pair creation event for user ${userId}:`, error.message);
+      }
+    };
+
+    provider.on(filter, eventHandler);
+
+    activeSnipeMonitors.set(userId, { 
+      provider, 
+      filter, 
+      handler: eventHandler,
+      startTime: Date.now(),
+      strategy: 'new_pairs',
+      mode: 'degen'
+    });
+
+    console.log(`✅ DEGEN MODE monitoring started for user ${userId}`);
+    logger.info(`DEGEN MODE snipe monitoring started for user ${userId} with ${snipeConfig.amount} ETH per snipe`);
+
+  } catch (error) {
+    console.log(`❌ Failed to start degen mode monitoring for user ${userId}:`, error.message);
+    throw error;
+  }
+}
+
+async function stopSnipeMonitoring(userId) {
+  try {
+    if (!activeSnipeMonitors.has(userId)) {
+      console.log(`⚠️ No active snipe monitoring found for user ${userId}`);
+      return;
+    }
+
+    const monitor = activeSnipeMonitors.get(userId);
+
+    if (monitor.mode === 'method_targeted' && monitor.filters) {
+      for (const filterHandler of monitor.filters) {
+        monitor.provider.off(filterHandler.filter, filterHandler.handler);
+      }
+      console.log(`🛑 Stopped method monitoring for user ${userId} (${monitor.filters.length} targets)`);
+    } else if (monitor.provider && monitor.filter && monitor.handler) {
+      monitor.provider.off(monitor.filter, monitor.handler);
+      console.log(`🛑 Stopped ${monitor.mode || monitor.strategy} monitoring for user ${userId}`);
+    }
+
+    activeSnipeMonitors.delete(userId);
+    logger.info(`Snipe monitoring stopped for user ${userId}`);
+
+  } catch (error) {
+    console.log(`❌ Error stopping snipe monitoring for user ${userId}:`, error.message);
+    throw error;
+  }
+}
+
+// ====================================================================
+// UTILITY FUNCTIONS
+// ====================================================================
+
+// Helper function to record transaction
+async function recordTransaction(userId, transactionData) {
+  try {
+    const userData = await loadUserData(userId);
+
+    if (!userData.transactions) {
+      userData.transactions = [];
+    }
+
+    // Add snipe-specific metadata
+    if (transactionData.type === 'snipe') {
+      transactionData.autoExecuted = true;
+      transactionData.snipeStrategy = transactionData.strategy || 'unknown';
+      transactionData.snipeAttemptTime = Date.now();
+    }
+
+    userData.transactions.push(transactionData);
+
+    // Keep only last 100 transactions
+    if (userData.transactions.length > 100) {
+      userData.transactions = userData.transactions.slice(-100);
+    }
+
+    await saveUserData(userId, userData);
+
+  } catch (error) {
+    console.log('Error recording transaction:', error);
+  }
+}
+
+// Helper function to track revenue
+async function trackRevenue(feeAmount) {
+  try {
+    // Log to revenue tracking system
+    const revenueData = {
+      amount: feeAmount,
+      currency: 'ETH',
+      timestamp: Date.now(),
+      type: 'trading_fee'
+    };
+
+    logger.info('Revenue collected:', revenueData);
+
+  } catch (error) {
+    console.log('Error tracking revenue:', error);
+  }
+}
 
 // ====================================================================
 // TEXT MESSAGE HANDLERS
@@ -1397,7 +1937,7 @@ You can now start trading!`,
   }
 }
 
-// Token address handler - will process buy token addresses
+// Token address handler
 async function handleTokenAddress(ctx, userId) {
   const tokenAddress = ctx.message.text.trim();
 
@@ -1511,7 +2051,7 @@ Please send a valid token contract address.`,
   }
 }
 
-// Custom amount handler - will process custom ETH amounts
+// Custom amount handler
 async function handleCustomAmount(ctx, userId, tokenAddress) {
   const amount = ctx.message.text.trim();
 
@@ -1542,6 +2082,40 @@ async function handleCustomAmount(ctx, userId, tokenAddress) {
     await ctx.reply(`❌ Error: ${error.message}`);
   }
 }
+
+// ====================================================================
+// BOT STARTUP
+// ====================================================================
+
+async function startBot() {
+  try {
+    // Create logs directory
+    await fs.mkdir(path.join(__dirname, 'logs'), { recursive: true });
+
+    // Create users database directory
+    await fs.mkdir(path.join(__dirname, 'db', 'users'), { recursive: true });
+
+    logger.info('Bot directories initialized');
+
+    // Launch bot
+    await bot.launch();
+
+    logger.info('🚀 Purity Sniper Bot is running!');
+    console.log('🚀 Purity Sniper Bot is running!');
+    console.log('✅ Ready for trading!');
+    console.log('🎯 SNIPING ENGINE ACTIVE!');
+    console.log('⚡ Complete snipe functionality implemented!');
+
+  } catch (error) {
+    logger.error('Failed to start bot:', error);
+    console.log('❌ Bot startup failed:', error.message);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
 // Start the bot
 startBot();
