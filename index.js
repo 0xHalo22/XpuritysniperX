@@ -2095,12 +2095,7 @@ async function showSolSnipe(ctx) {
   await ctx.editMessageText(
     `🟣 **SOL SNIPE TOKEN**
 
-🚧 SOL sniping is under development.
 
-This feature will include:
-- Snipe new SPL tokens
-- Raydium/Orca monitoring
-- Auto-buy on liquidity
 
 Coming soon!`,
     {
