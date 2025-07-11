@@ -596,7 +596,7 @@ function getStrategyDisplayName(strategy) {
   };
 
   return strategyNames[strategy] || 'Unknown Strategy';
-}
+}</old_str>
 
 // Helper function to get human-readable strategy display names
 function getStrategyDisplayName(strategy) {
