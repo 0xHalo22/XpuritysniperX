@@ -293,6 +293,45 @@ async function getWalletAddress(userId, userData) {
   }
 }
 
+/**
+ * Get SOL wallet for trading operations
+ */
+async function getSolWalletForTrading(userId, userData) {
+  try {
+    const encryptedKey = userData.solWallets[userData.activeSolWallet || 0];
+    if (!encryptedKey) {
+      throw new Error('No SOL wallet found');
+    }
+
+    const address = await walletManager.getWalletAddress(encryptedKey, userId);
+    const privateKey = await walletManager.decryptPrivateKey(encryptedKey, userId);
+
+    return {
+      address: address,
+      privateKey: privateKey,
+      encryptedKey: encryptedKey
+    };
+  } catch (error) {
+    throw new Error(`Failed to get SOL wallet for trading: ${error.message}`);
+  }
+}
+
+/**
+ * Get SOL wallet address only
+ */
+async function getSolWalletAddress(userId, userData) {
+  try {
+    const encryptedKey = userData.solWallets[userData.activeSolWallet || 0];
+    if (!encryptedKey) {
+      throw new Error('No SOL wallet found');
+    }
+
+    return await walletManager.getWalletAddress(encryptedKey, userId);
+  } catch (error) {
+    throw new Error(`Failed to get SOL wallet address: ${error.message}`);
+  }
+}
+
 // ====================================================================
 // MAIN MENU HANDLERS
 // ====================================================================
@@ -348,6 +387,13 @@ bot.action('eth_buy', showEthBuy);
 bot.action('eth_sell', showEthSell);
 bot.action('eth_mirror', showEthMirror);
 
+// SOL Trading handlers - CRITICAL: Prevent crashes
+bot.action('sol_wallet', showSolWallet);
+bot.action('sol_buy', showSolBuy);
+bot.action('sol_sell', showSolSell);
+bot.action('sol_mirror', showSolMirror);
+bot.action('sol_snipe', showSolSnipe);
+
 // ETH Buy amount handlers
 bot.action(/^eth_buy_amount_(.+)_(.+)$/, handleEthBuyAmount);
 bot.action(/^eth_buy_execute_(.+)_(.+)$/, handleEthBuyExecute);
@@ -361,6 +407,20 @@ bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, handleEthSellExecute);
 bot.action('eth_wallet_import', handleEthWalletImport);
 bot.action('eth_wallet_generate', handleEthWalletGenerate);
 bot.action('eth_wallet_view', handleEthWalletView);
+
+// SOL Buy amount handlers - CRITICAL: Prevent crashes
+bot.action(/^sol_buy_amount_(.+)_(.+)$/, handleSolBuyAmount);
+bot.action(/^sol_buy_execute_(.+)_(.+)$/, handleSolBuyExecute);
+
+// SOL Sell handlers - CRITICAL: Prevent crashes
+bot.action(/^sol_sell_token_(.+)$/, handleSolSellToken);
+bot.action(/^sol_sell_percentage_(.+)_(.+)$/, handleSolSellPercentage);
+bot.action(/^sol_sell_execute_(.+)_(.+)_(.+)$/, handleSolSellExecute);
+
+// SOL Wallet management handlers
+bot.action('sol_wallet_import', handleSolWalletImport);
+bot.action('sol_wallet_generate', handleSolWalletGenerate);
+bot.action('sol_wallet_view', handleSolWalletView);
 
 // ETH Chain Menu
 async function showEthMenu(ctx) {
@@ -1104,11 +1164,13 @@ async function handleEthBuyAmount(ctx) {
     const tokenAddress = getFullTokenAddress(shortId);
     
     // Check rate limit
-    if (!checkRateLimit(userId)) {
+    try {
+      await checkRateLimit(userId, 'transactions');
+      await updateRateLimit(userId, 'transactions');
+    } catch (rateLimitError) {
       await ctx.answerCbQuery('⚠️ Rate limit exceeded. Please wait before making another request.', { show_alert: true });
       return;
     }
-    updateRateLimit(userId);
     
     const userData = await loadUserData(userId);
     const wallet = await getWalletForTrading(userId, userData);
@@ -1364,11 +1426,13 @@ async function handleEthSellPercentage(ctx) {
     const tokenAddress = getFullTokenAddress(shortId);
     
     // Check rate limit
-    if (!checkRateLimit(userId)) {
+    try {
+      await checkRateLimit(userId, 'transactions');
+      await updateRateLimit(userId, 'transactions');
+    } catch (rateLimitError) {
       await ctx.answerCbQuery('⚠️ Rate limit exceeded. Please wait before making another request.', { show_alert: true });
       return;
     }
-    updateRateLimit(userId);
     
     const userData = await loadUserData(userId);
     const wallet = await getWalletForTrading(userId, userData);
@@ -1933,6 +1997,260 @@ You can now start trading!`,
     );
   } catch (error) {
     userStates.delete(userId);
+
+
+// ====================================================================
+// SOL HANDLERS - BASIC IMPLEMENTATIONS TO PREVENT CRASHES
+// ====================================================================
+
+async function showSolWallet(ctx) {
+  await ctx.editMessageText(
+    `🟣 **SOL WALLET**
+
+🚧 SOL wallet management is under development.
+
+This feature will include:
+• Import/Generate SOL wallets
+• View SOL balance
+• Transaction history
+
+Coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      }
+    }
+  );
+}
+
+async function showSolBuy(ctx) {
+  await ctx.editMessageText(
+    `🟣 **SOL BUY TOKEN**
+
+🚧 SOL token buying is under development.
+
+This feature will include:
+• Buy SPL tokens with SOL
+• Jupiter DEX integration
+• Real-time pricing
+
+Coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      }
+    }
+  );
+}
+
+async function showSolSell(ctx) {
+  await ctx.editMessageText(
+    `🟣 **SOL SELL TOKEN**
+
+🚧 SOL token selling is under development.
+
+This feature will include:
+• Sell SPL tokens for SOL
+• Jupiter DEX integration
+• Portfolio management
+
+Coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      }
+    }
+  );
+}
+
+async function showSolMirror(ctx) {
+  await ctx.editMessageText(
+    `🟣 **SOL MIRROR TRADING**
+
+🚧 SOL mirror trading is under development.
+
+This feature will include:
+• Copy SOL wallet trades
+• Real-time monitoring
+• Auto-execution
+
+Coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      }
+    }
+  );
+}
+
+async function showSolSnipe(ctx) {
+  await ctx.editMessageText(
+    `🟣 **SOL SNIPE TOKEN**
+
+🚧 SOL sniping is under development.
+
+
+
+// ====================================================================
+// STATISTICS AND SETTINGS HANDLERS
+// ====================================================================
+
+async function showStatistics(ctx) {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const userData = await loadUserData(userId);
+    const transactions = userData.transactions || [];
+
+    // Calculate basic statistics
+    const totalTransactions = transactions.length;
+    const ethTransactions = transactions.filter(tx => tx.chain === 'ethereum').length;
+    const solTransactions = transactions.filter(tx => tx.chain === 'solana').length;
+
+    // Calculate success rate
+    const recentTx = transactions.slice(-30); // Last 30 transactions
+    const successfulTx = recentTx.filter(tx => tx.txHash && !tx.failed);
+    const successRate = recentTx.length > 0 ? Math.round((successfulTx.length / recentTx.length) * 100) : 0;
+
+    await ctx.editMessageText(
+      `📊 **YOUR STATISTICS**
+
+**Trading Activity:**
+• Total Transactions: ${totalTransactions}
+• ETH Transactions: ${ethTransactions}
+• SOL Transactions: ${solTransactions}
+
+**Performance:**
+• Success Rate: ${successRate}%
+• Recent Activity: ${recentTx.length} trades
+
+**Account:**
+• Premium: ${userData.premium?.active ? '⭐ Active' : '🆓 Free'}
+• Member Since: ${new Date(userData.createdAt).toLocaleDateString()}
+
+**Wallets:**
+• ETH Wallets: ${userData.ethWallets?.length || 0}
+• SOL Wallets: ${userData.solWallets?.length || 0}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Back to Home', callback_data: 'main_menu' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    await ctx.editMessageText(
+      `❌ **Error loading statistics**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Back to Home', callback_data: 'main_menu' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+bot.action('settings', async (ctx) => {
+  await ctx.editMessageText(
+    `⚙️ **SETTINGS**
+
+🚧 Settings management is under development.
+
+This will include:
+• Slippage configuration
+• Gas price settings
+• Notification preferences
+• Premium subscription
+
+Coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to Home', callback_data: 'main_menu' }]
+        ]
+      }
+    }
+  );
+});
+
+
+This feature will include:
+• Snipe new SPL tokens
+• Raydium/Orca monitoring
+• Auto-buy on liquidity
+
+Coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      }
+    }
+  );
+}
+
+// SOL Buy Handlers
+async function handleSolBuyAmount(ctx) {
+  await ctx.answerCbQuery('🚧 SOL buying coming soon!');
+  await showSolBuy(ctx);
+}
+
+async function handleSolBuyExecute(ctx) {
+  await ctx.answerCbQuery('🚧 SOL buying coming soon!');
+  await showSolBuy(ctx);
+}
+
+// SOL Sell Handlers
+async function handleSolSellToken(ctx) {
+  await ctx.answerCbQuery('🚧 SOL selling coming soon!');
+  await showSolSell(ctx);
+}
+
+async function handleSolSellPercentage(ctx) {
+  await ctx.answerCbQuery('🚧 SOL selling coming soon!');
+  await showSolSell(ctx);
+}
+
+async function handleSolSellExecute(ctx) {
+  await ctx.answerCbQuery('🚧 SOL selling coming soon!');
+  await showSolSell(ctx);
+}
+
+// SOL Wallet Handlers
+async function handleSolWalletImport(ctx) {
+  await ctx.answerCbQuery('🚧 SOL wallet import coming soon!');
+  await showSolWallet(ctx);
+}
+
+async function handleSolWalletGenerate(ctx) {
+  await ctx.answerCbQuery('🚧 SOL wallet generation coming soon!');
+  await showSolWallet(ctx);
+}
+
+async function handleSolWalletView(ctx) {
+  await ctx.answerCbQuery('🚧 SOL wallet view coming soon!');
+  await showSolWallet(ctx);
+}
+
+
     await ctx.reply(`❌ Error importing wallet: ${error.message}`);
   }
 }
