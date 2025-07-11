@@ -573,30 +573,39 @@ class EthChain {
 
         const provider = await this.getProvider();
 
-        // Build transaction for estimation
-        let transaction;
-        if (tokenIn === this.tokens.WETH || tokenIn === this.contracts.WETH) {
-          transaction = await this.buildETHToTokenSwap(tokenOut, amountIn, BigInt(0), recipient);
-        } else if (tokenOut === this.tokens.WETH || tokenOut === this.contracts.WETH) {
-          transaction = await this.buildTokenToETHSwap(tokenIn, amountIn, BigInt(0), recipient);
-        } else {
-          transaction = await this.buildTokenToTokenSwap(tokenIn, tokenOut, amountIn, BigInt(0), recipient);
-        }
-
         // Level 1: Try precise estimation
         try {
+          // Build transaction for estimation
+          let transaction;
+          if (tokenIn === this.tokens.WETH || tokenIn === this.contracts.WETH) {
+            transaction = await this.buildETHToTokenSwap(tokenOut, amountIn, BigInt(0), recipient);
+          } else if (tokenOut === this.tokens.WETH || tokenOut === this.contracts.WETH) {
+            transaction = await this.buildTokenToETHSwap(tokenIn, amountIn, BigInt(0), recipient);
+          } else {
+            transaction = await this.buildTokenToTokenSwap(tokenIn, tokenOut, amountIn, BigInt(0), recipient);
+          }
+
           const gasEstimate = await provider.estimateGas({
             ...transaction,
             from: recipient
           });
 
-          const bufferedGas = gasEstimate.mul(200).div(100); // 2x buffer
-          const MIN_GAS = ethers.BigNumber.from(400000);
-          const finalGas = bufferedGas.gt(MIN_GAS) ? bufferedGas : MIN_GAS;
+          // Use a reasonable buffer (30% instead of 100%)
+          const bufferedGas = gasEstimate.mul(130).div(100);
+          
+          // Set reasonable min/max gas limits
+          const MIN_GAS = ethers.BigNumber.from(150000);
+          const MAX_GAS = ethers.BigNumber.from(300000);
+          
+          let finalGas = bufferedGas;
+          if (finalGas.lt(MIN_GAS)) finalGas = MIN_GAS;
+          if (finalGas.gt(MAX_GAS)) finalGas = MAX_GAS;
 
-          const gasPrice = (await provider.getGasPrice()).mul(120).div(100); // +20%
+          const gasPrice = await provider.getGasPrice();
 
-          console.log(`✅ Precise gas: ${gasEstimate.toString()} -> ${finalGas.toString()}`);
+          console.log(`✅ Gas estimate: ${gasEstimate.toString()}`);
+          console.log(`✅ Final gas limit: ${finalGas.toString()}`);
+          console.log(`✅ Gas price: ${ethers.utils.formatUnits(gasPrice, 'gwei')} gwei`);
 
           return {
             gasLimit: finalGas,
@@ -608,9 +617,9 @@ class EthChain {
         } catch (estimateError) {
           console.log(`⚠️ Precise estimation failed: ${estimateError.message}`);
 
-          // Level 2: Conservative fallback
-          const gasPrice = (await provider.getGasPrice()).mul(130).div(100); // +30%
-          const conservativeGas = ethers.BigNumber.from(600000);
+          // Level 2: Conservative fallback with reasonable limits
+          const gasPrice = await provider.getGasPrice();
+          const conservativeGas = ethers.BigNumber.from(200000); // Reasonable default
 
           console.log(`🛡️ Using conservative gas: ${conservativeGas.toString()}`);
 
@@ -628,8 +637,8 @@ class EthChain {
         // Level 3: Emergency fallback
         try {
           const provider = await this.getProvider();
-          const gasPrice = (await provider.getGasPrice()).mul(150).div(100); // +50%
-          const emergencyGas = ethers.BigNumber.from(800000);
+          const gasPrice = await provider.getGasPrice();
+          const emergencyGas = ethers.BigNumber.from(250000); // Reasonable emergency fallback
 
           console.log(`🚨 Emergency gas: ${emergencyGas.toString()}`);
 
