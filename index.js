@@ -2181,6 +2181,8 @@ Please try again.`,
   }
 }
 
+bot.action('statistics', showStatistics);
+
 bot.action('settings', async (ctx) => {
   await ctx.editMessageText(
     `⚙️ **SETTINGS**
@@ -2203,9 +2205,6 @@ Coming soon!`,
     }
   );
 });
-
-
-This feature will include:
 • Snipe new SPL tokens
 • Raydium/Orca monitoring
 • Auto-buy on liquidity
