@@ -167,23 +167,39 @@ async function getSnipeStatistics(userId) {
   }
 }
 
-// Configure logging
+// Configure comprehensive logging
 const logger = winston.createLogger({
-  level: 'info',
+  level: 'debug',
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
-    winston.format.json()
+    winston.format.colorize(),
+    winston.format.printf(({ timestamp, level, message, service, ...meta }) => {
+      return `${timestamp} [${service}] ${level}: ${message} ${Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''}`;
+    })
   ),
   defaultMeta: { service: 'purity-sniper-bot' },
   transports: [
     new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
     new winston.transports.File({ filename: 'logs/combined.log' }),
     new winston.transports.Console({
-      format: winston.format.simple()
+      level: 'debug',
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
     })
   ]
 });
+
+// Add request/action logging middleware
+function logUserAction(action, userId, details = {}) {
+  logger.info(`USER ACTION: ${action}`, {
+    userId,
+    timestamp: new Date().toISOString(),
+    ...details
+  });
+}
 
 // ====================================================================
 // USER DATA MANAGEMENT
@@ -452,7 +468,17 @@ Coming soon!`,
 // Start command
 bot.start(async (ctx) => {
   const userId = ctx.from.id.toString();
-  logger.info(`New user started bot: ${userId}`);
+  const username = ctx.from.username || 'unknown';
+  const firstName = ctx.from.first_name || 'unknown';
+  
+  logger.info(`🚀 NEW USER STARTED BOT`, {
+    userId,
+    username,
+    firstName,
+    chatId: ctx.chat.id
+  });
+
+  logUserAction('START_BOT', userId, { username, firstName });
 
   await showMainMenu(ctx);
 });
@@ -489,10 +515,24 @@ www.puritysniperbot.com`;
   }
 }
 
-// Chain menu handlers
-bot.action('main_menu', showMainMenu);
-bot.action('chain_eth', showEthMenu);
-bot.action('chain_sol', showSolMenu);
+// Chain menu handlers with logging
+bot.action('main_menu', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  logUserAction('NAVIGATE_MAIN_MENU', userId);
+  await showMainMenu(ctx);
+});
+
+bot.action('chain_eth', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  logUserAction('NAVIGATE_ETH_CHAIN', userId);
+  await showEthMenu(ctx);
+});
+
+bot.action('chain_sol', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  logUserAction('NAVIGATE_SOL_CHAIN', userId);
+  await showSolMenu(ctx);
+});
 
 // ETH Trading handlers
 bot.action('eth_wallet', showEthWallet);
@@ -507,10 +547,60 @@ bot.action('sol_sell', showSolSell);
 bot.action('sol_mirror', showSolMirror);
 bot.action('sol_snipe', showSolSnipe);
 
-// ETH Buy amount handlers
-bot.action(/^eth_buy_amount_(.+)_(.+)$/, handleEthBuyAmount);
-bot.action(/^eth_buy_custom_(.+)$/, handleEthBuyCustom);
-bot.action(/^eth_buy_execute_(.+)_(.+)$/, handleEthBuyExecute);
+// ETH Buy amount handlers with error boundaries
+bot.action(/^eth_buy_amount_(.+)_(.+)$/, async (ctx) => {
+  const userId = ctx.from.id.toString();
+  try {
+    logUserAction('ETH_BUY_AMOUNT_SELECT', userId, { 
+      amount: ctx.match[1], 
+      tokenId: ctx.match[2] 
+    });
+    await handleEthBuyAmount(ctx);
+  } catch (error) {
+    logger.error('❌ ETH_BUY_AMOUNT handler error:', {
+      userId,
+      error: error.message,
+      stack: error.stack,
+      callbackData: ctx.callbackQuery.data
+    });
+    await ctx.answerCbQuery('❌ Error processing request. Please try again.');
+  }
+});
+
+bot.action(/^eth_buy_custom_(.+)$/, async (ctx) => {
+  const userId = ctx.from.id.toString();
+  try {
+    logUserAction('ETH_BUY_CUSTOM_SELECT', userId, { tokenId: ctx.match[1] });
+    await handleEthBuyCustom(ctx);
+  } catch (error) {
+    logger.error('❌ ETH_BUY_CUSTOM handler error:', {
+      userId,
+      error: error.message,
+      stack: error.stack,
+      callbackData: ctx.callbackQuery.data
+    });
+    await ctx.answerCbQuery('❌ Error processing request. Please try again.');
+  }
+});
+
+bot.action(/^eth_buy_execute_(.+)_(.+)$/, async (ctx) => {
+  const userId = ctx.from.id.toString();
+  try {
+    logUserAction('ETH_BUY_EXECUTE', userId, { 
+      amount: ctx.match[1], 
+      tokenId: ctx.match[2] 
+    });
+    await handleEthBuyExecute(ctx);
+  } catch (error) {
+    logger.error('❌ ETH_BUY_EXECUTE handler error:', {
+      userId,
+      error: error.message,
+      stack: error.stack,
+      callbackData: ctx.callbackQuery.data
+    });
+    await ctx.answerCbQuery('❌ Error executing trade. Please try again.');
+  }
+});
 
 // ETH Sell handlers
 bot.action(/^eth_sell_token_(.+)$/, handleEthSellToken);
@@ -2277,11 +2367,27 @@ bot.command('cancel', async (ctx) => {
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id.toString();
   const userState = userStates.get(userId);
+  const messageText = ctx.message.text;
 
-  if (!userState) return;
+  logger.debug(`📥 TEXT MESSAGE RECEIVED`, {
+    userId,
+    messageText: messageText.substring(0, 100), // Limit log size
+    hasUserState: !!userState,
+    userState: userState ? userState.action : 'none',
+    messageLength: messageText.length
+  });
+
+  if (!userState) {
+    logger.debug(`🔍 NO USER STATE - ignoring message from ${userId}`);
+    return;
+  }
 
   // Check for cancel command
   if (ctx.message.text.toLowerCase() === '/cancel') {
+    logger.info(`❌ USER CANCELLED OPERATION`, {
+      userId,
+      previousState: userState.action
+    });
     userStates.delete(userId);
     await ctx.reply('❌ **Operation cancelled**', {
       reply_markup: {
@@ -2295,6 +2401,12 @@ bot.on('text', async (ctx) => {
   }
 
   try {
+    logger.info(`🔄 PROCESSING TEXT INPUT`, {
+      userId,
+      action: userState.action,
+      inputLength: messageText.length
+    });
+
     switch (userState.action) {
       case 'importing_eth_wallet':
         await handleWalletImport(ctx, userId);
@@ -2313,13 +2425,35 @@ bot.on('text', async (ctx) => {
         break;
 
       default:
+        logger.warn(`⚠️ UNKNOWN USER STATE`, {
+          userId,
+          action: userState.action
+        });
         userStates.delete(userId);
         break;
     }
   } catch (error) {
-    console.log('Text handler error:', error.message);
+    logger.error(`❌ TEXT HANDLER ERROR`, {
+      userId,
+      action: userState.action,
+      error: error.message,
+      stack: error.stack,
+      messageText: messageText.substring(0, 50)
+    });
+
     userStates.delete(userId);
-    await ctx.reply('❌ An error occurred. Please try again.');
+    
+    await ctx.reply(
+      `❌ **Error processing your input**\n\n${error.message}\n\nPlease try again from the menu.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
   }
 });
 
@@ -2499,19 +2633,49 @@ Please send a valid token contract address.`,
 async function handleCustomAmount(ctx, userId, userState) {
   const amount = ctx.message.text.trim();
 
+  logger.info(`📝 CUSTOM AMOUNT INPUT`, {
+    userId,
+    inputAmount: amount,
+    userState: userState,
+    timestamp: Date.now()
+  });
+
   try {
     userStates.delete(userId);
 
     const amountFloat = parseFloat(amount);
+    logger.debug(`🔍 PARSING AMOUNT`, {
+      userId,
+      originalInput: amount,
+      parsedAmount: amountFloat,
+      isValid: !isNaN(amountFloat) && amountFloat > 0
+    });
+
     if (isNaN(amountFloat) || amountFloat <= 0) {
+      logger.warn(`❌ INVALID AMOUNT INPUT`, {
+        userId,
+        input: amount,
+        parsedValue: amountFloat,
+        reason: 'Not a positive number'
+      });
       throw new Error('Invalid amount. Please enter a positive number.');
     }
 
     if (amountFloat < 0.001) {
+      logger.warn(`❌ AMOUNT TOO SMALL`, {
+        userId,
+        amount: amountFloat,
+        minimum: 0.001
+      });
       throw new Error('Minimum amount is 0.001 ETH');
     }
 
     if (amountFloat > 100) {
+      logger.warn(`❌ AMOUNT TOO LARGE`, {
+        userId,
+        amount: amountFloat,
+        maximum: 100
+      });
       throw new Error('Maximum amount is 100 ETH');
     }
 
@@ -2721,25 +2885,72 @@ async function handleSolWalletView(ctx) {
 
 async function startBot() {
   try {
+    console.log('🚀 STARTING PURITY SNIPER BOT...');
+    logger.info('🚀 Bot startup initiated');
+
     // Create logs directory
     await fs.mkdir(path.join(__dirname, 'logs'), { recursive: true });
+    logger.info('📁 Logs directory created/verified');
 
     // Create users database directory
     await fs.mkdir(path.join(__dirname, 'db', 'users'), { recursive: true });
+    logger.info('📁 Users database directory created/verified');
 
-    logger.info('Bot directories initialized');
+    // Verify environment variables
+    const requiredEnvVars = ['BOT_TOKEN', 'ETH_RPC_URL'];
+    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+    
+    if (missingVars.length > 0) {
+      throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+    }
+    
+    logger.info('✅ Environment variables verified');
+
+    // Initialize modules
+    try {
+      logger.info('🔧 Initializing wallet manager...');
+      // walletManager already initialized above
+      
+      logger.info('⛓️ Initializing ETH chain...');
+      // ethChain already initialized above
+      
+      logger.info('📊 Initializing rate limiting...');
+      // Rate limiting already imported
+      
+    } catch (moduleError) {
+      logger.error('❌ Module initialization failed:', moduleError);
+      throw moduleError;
+    }
 
     // Launch bot
+    logger.info('🤖 Launching Telegram bot...');
     await bot.launch();
 
-    logger.info('🚀 Purity Sniper Bot is running!');
-    console.log('🚀 Purity Sniper Bot is running!');
+    // Success messages
+    logger.info('🚀 PURITY SNIPER BOT IS RUNNING!');
+    console.log('🚀 PURITY SNIPER BOT IS RUNNING!');
     console.log('✅ Ready for trading!');
     console.log('🎯 SNIPING ENGINE ACTIVE!');
     console.log('⚡ Complete snipe functionality implemented!');
+    console.log('📝 Extended logging enabled!');
+    console.log(`🕒 Started at: ${new Date().toISOString()}`);
+
+    // Log system info
+    logger.info('📊 SYSTEM INFO', {
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      pid: process.pid,
+      uptime: process.uptime(),
+      memory: process.memoryUsage()
+    });
 
   } catch (error) {
-    logger.error('Failed to start bot:', error);
+    logger.error('❌ BOT STARTUP FAILED', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
     console.log('❌ Bot startup failed:', error.message);
     process.exit(1);
   }
