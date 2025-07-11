@@ -1,4 +1,3 @@
-
 // ====================================================================
 // PURITY SNIPER BOT 
 // ====================================================================
@@ -919,28 +918,28 @@ ${slippage <= 10 ?
 
 async function showEthWallet(ctx) {
   const userId = ctx.from.id.toString();
-  
+
   try {
     const userData = await loadUserData(userId);
-    
+
     let walletInfo = '🔗 **ETHEREUM WALLET**\n\n';
-    
+
     if (userData.ethWallets && userData.ethWallets.length > 0) {
       try {
         const address = await getWalletAddress(userId, userData);
         const balance = await ethChain.getETHBalance(address);
-        
+
         walletInfo += `📍 **Address:** \`${address}\`\n`;
         walletInfo += `💰 **Balance:** ${balance} ETH\n\n`;
         walletInfo += `🔐 Wallet is encrypted and secure`;
-        
+
         const keyboard = [
           [{ text: '📥 Import Wallet', callback_data: 'eth_wallet_import' }],
           [{ text: '🔄 Generate New', callback_data: 'eth_wallet_generate' }],
           [{ text: '👁️ View Details', callback_data: 'eth_wallet_view' }],
           [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
         ];
-        
+
         await ctx.editMessageText(walletInfo, {
           reply_markup: { inline_keyboard: keyboard },
           parse_mode: 'Markdown'
@@ -951,13 +950,13 @@ async function showEthWallet(ctx) {
     } else {
       walletInfo += '❌ No wallet found\n\n';
       walletInfo += 'Import an existing wallet or generate a new one to start trading.';
-      
+
       const keyboard = [
         [{ text: '📥 Import Wallet', callback_data: 'eth_wallet_import' }],
         [{ text: '🔄 Generate New', callback_data: 'eth_wallet_generate' }],
         [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
       ];
-      
+
       await ctx.editMessageText(walletInfo, {
         reply_markup: { inline_keyboard: keyboard },
         parse_mode: 'Markdown'
@@ -975,7 +974,7 @@ async function showEthWallet(ctx) {
 async function handleEthWalletImport(ctx) {
   const userId = ctx.from.id.toString();
   userStates.set(userId, { action: 'importing_eth_wallet' });
-  
+
   await ctx.editMessageText(
     `🔐 **IMPORT ETH WALLET**
 
@@ -990,25 +989,25 @@ Send me your private key to import your wallet.
 
 async function handleEthWalletGenerate(ctx) {
   const userId = ctx.from.id.toString();
-  
+
   try {
     const newWallet = ethers.Wallet.createRandom();
     const privateKey = newWallet.privateKey;
     const address = newWallet.address;
-    
+
     // Encrypt and store wallet
     const encryptedKey = await walletManager.encryptPrivateKey(privateKey, userId);
     const userData = await loadUserData(userId);
-    
+
     if (!userData.ethWallets) {
       userData.ethWallets = [];
     }
-    
+
     userData.ethWallets.push(encryptedKey);
     userData.activeEthWallet = userData.ethWallets.length - 1;
-    
+
     await saveUserData(userId, userData);
-    
+
     await ctx.editMessageText(
       `✅ **NEW ETH WALLET GENERATED**
 
@@ -1038,12 +1037,12 @@ async function handleEthWalletGenerate(ctx) {
 
 async function handleEthWalletView(ctx) {
   const userId = ctx.from.id.toString();
-  
+
   try {
     const userData = await loadUserData(userId);
     const address = await getWalletAddress(userId, userData);
     const balance = await ethChain.getETHBalance(address);
-    
+
     const walletInfo = `👁️ **WALLET DETAILS**
 
 📍 **Address:** \`${address}\`
@@ -1052,7 +1051,7 @@ async function handleEthWalletView(ctx) {
 🔐 **Security:** AES-256 Encrypted
 
 [View on Etherscan](https://etherscan.io/address/${address})`;
-    
+
     await ctx.editMessageText(walletInfo, {
       reply_markup: {
         inline_keyboard: [
@@ -1076,7 +1075,7 @@ async function handleEthWalletView(ctx) {
 
 async function showEthBuy(ctx) {
   const userId = ctx.from.id.toString();
-  
+
   try {
     // Check if user has wallet
     const userData = await loadUserData(userId);
@@ -1098,9 +1097,9 @@ You need to import or generate a wallet first to start trading.`,
       );
       return;
     }
-    
+
     userStates.set(userId, { action: 'entering_token_address' });
-    
+
     await ctx.editMessageText(
       `💰 **BUY TOKEN**
 
@@ -1159,10 +1158,10 @@ async function handleEthBuyAmount(ctx) {
   const match = ctx.match;
   const amount = parseFloat(match[1]);
   const shortId = match[2];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
-    
+
     // Check rate limit
     try {
       await checkRateLimit(userId, 'transactions');
@@ -1171,30 +1170,30 @@ async function handleEthBuyAmount(ctx) {
       await ctx.answerCbQuery('⚠️ Rate limit exceeded. Please wait before making another request.', { show_alert: true });
       return;
     }
-    
+
     const userData = await loadUserData(userId);
     const wallet = await getWalletForTrading(userId, userData);
-    
+
     // Check balance
     const balance = await ethChain.getETHBalance(wallet.address);
     const balanceFloat = parseFloat(balance);
-    
+
     if (balanceFloat < amount + 0.02) { // Amount + gas buffer
       await ctx.answerCbQuery(`❌ Insufficient balance. Need ${amount + 0.02} ETH, have ${balance} ETH`, { show_alert: true });
       return;
     }
-    
+
     // Get token info and quote
     const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
     const amountWei = ethers.utils.parseEther(amount.toString());
     const quote = await ethChain.getSwapQuote(ethChain.contracts.WETH, tokenAddress, amountWei);
     const expectedTokens = parseFloat(ethers.utils.formatUnits(quote.outputAmount, tokenInfo.decimals));
-    
+
     // Calculate fees
     const feePercent = userData.premium?.active ? 0.5 : 1.0;
     const feeAmount = amount * (feePercent / 100);
     const netTradeAmount = amount - feeAmount;
-    
+
     const message = `🔥 **CONFIRM BUY ORDER**
 
 🎯 **Token:** ${tokenInfo.symbol}
@@ -1224,20 +1223,20 @@ async function handleEthBuyExecute(ctx) {
   const match = ctx.match;
   const amount = parseFloat(match[1]);
   const shortId = match[2];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
-    
+
     await ctx.editMessageText('⏳ **Executing buy order...**\n\nPlease wait...', { parse_mode: 'Markdown' });
-    
+
     const userData = await loadUserData(userId);
     const wallet = await getWalletForTrading(userId, userData);
-    
+
     // Calculate fees
     const feePercent = userData.premium?.active ? 0.5 : 1.0;
     const feeAmount = amount * (feePercent / 100);
     const netTradeAmount = amount - feeAmount;
-    
+
     // Execute swap
     const swapResult = await ethChain.executeSwap(
       ethChain.contracts.WETH,
@@ -1246,7 +1245,7 @@ async function handleEthBuyExecute(ctx) {
       wallet.privateKey,
       userData.settings?.slippage || 3
     );
-    
+
     // Collect fee (non-blocking)
     let feeResult = null;
     if (feeAmount > 0) {
@@ -1256,7 +1255,7 @@ async function handleEthBuyExecute(ctx) {
         console.log('Fee collection failed:', feeError.message);
       }
     }
-    
+
     // Record transaction
     await recordTransaction(userId, {
       type: 'buy',
@@ -1269,10 +1268,10 @@ async function handleEthBuyExecute(ctx) {
       timestamp: Date.now(),
       chain: 'ethereum'
     });
-    
+
     // Track revenue
     await trackRevenue(feeAmount);
-    
+
     const successMessage = `✅ **BUY ORDER COMPLETED!**
 
 🎯 **Token:** ${tokenAddress.slice(0, 8)}...
@@ -1290,7 +1289,7 @@ async function handleEthBuyExecute(ctx) {
       },
       parse_mode: 'Markdown'
     });
-    
+
   } catch (error) {
     await ctx.editMessageText(`❌ **Buy order failed:**\n\n${error.message}`, {
       reply_markup: {
@@ -1310,7 +1309,7 @@ async function handleEthBuyExecute(ctx) {
 
 async function showEthSell(ctx) {
   const userId = ctx.from.id.toString();
-  
+
   try {
     // Check if user has wallet
     const userData = await loadUserData(userId);
@@ -1332,9 +1331,9 @@ You need to import or generate a wallet first to start trading.`,
       );
       return;
     }
-    
+
     userStates.set(userId, { action: 'entering_sell_token_address' });
-    
+
     await ctx.editMessageText(
       `💸 **SELL TOKEN**
 
@@ -1357,7 +1356,7 @@ Send me the token contract address you want to sell.
 async function showEthSellPercentage(ctx, tokenAddress, tokenInfo, tokenBalance) {
   const shortId = storeTokenMapping(tokenAddress);
   const balanceFormatted = parseFloat(ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals));
-  
+
   const keyboard = [
     [
       { text: '25%', callback_data: `eth_sell_percentage_25_${shortId}` },
@@ -1394,23 +1393,23 @@ Choose percentage to sell:`;
 async function handleEthSellToken(ctx) {
   const userId = ctx.from.id.toString();
   const shortId = ctx.match[1];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
     const userData = await loadUserData(userId);
     const wallet = await getWalletForTrading(userId, userData);
-    
+
     // Get token info and balance
     const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
     const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
-    
+
     if (tokenBalance.isZero()) {
       await ctx.answerCbQuery(`❌ No ${tokenInfo.symbol} balance found`, { show_alert: true });
       return;
     }
-    
+
     await showEthSellPercentage(ctx, tokenAddress, tokenInfo, tokenBalance);
-    
+
   } catch (error) {
     await ctx.answerCbQuery(`❌ Error: ${error.message}`, { show_alert: true });
   }
@@ -1421,10 +1420,10 @@ async function handleEthSellPercentage(ctx) {
   const match = ctx.match;
   const percentage = parseInt(match[1]);
   const shortId = match[2];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
-    
+
     // Check rate limit
     try {
       await checkRateLimit(userId, 'transactions');
@@ -1433,28 +1432,28 @@ async function handleEthSellPercentage(ctx) {
       await ctx.answerCbQuery('⚠️ Rate limit exceeded. Please wait before making another request.', { show_alert: true });
       return;
     }
-    
+
     const userData = await loadUserData(userId);
     const wallet = await getWalletForTrading(userId, userData);
-    
+
     // Get token info and balance
     const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
     const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
     const balanceFormatted = parseFloat(ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals));
-    
+
     // Calculate sell amount
     const sellAmount = balanceFormatted * (percentage / 100);
     const sellAmountWei = ethChain.calculateSmartSellAmount(tokenBalance, percentage, tokenInfo.decimals);
-    
+
     // Get swap quote
     const quote = await ethChain.getSwapQuote(tokenAddress, ethChain.contracts.WETH, sellAmountWei);
     const expectedEth = parseFloat(ethers.utils.formatEther(quote.outputAmount));
-    
+
     // Calculate fees
     const feePercent = userData.premium?.active ? 0.5 : 1.0;
     const feeAmount = expectedEth * (feePercent / 100);
     const netReceive = expectedEth - feeAmount;
-    
+
     const message = `🔥 **CONFIRM SELL ORDER**
 
 🎯 **Token:** ${tokenInfo.symbol}
@@ -1485,20 +1484,20 @@ async function handleEthSellExecute(ctx) {
   const amount = parseFloat(match[1]);
   const shortId = match[2];
   const amountType = match[3];
-  
+
   try {
     const tokenAddress = getFullTokenAddress(shortId);
-    
+
     await ctx.editMessageText('⏳ **Executing sell order...**\n\nPlease wait...', { parse_mode: 'Markdown' });
-    
+
     const userData = await loadUserData(userId);
     const wallet = await getWalletForTrading(userId, userData);
-    
+
     // Get token info and balance
     const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
     const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
     const balanceFormatted = parseFloat(ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals));
-    
+
     // Calculate sell amount
     let sellAmountWei;
     if (amountType === 'percent') {
@@ -1506,7 +1505,7 @@ async function handleEthSellExecute(ctx) {
     } else {
       sellAmountWei = ethers.utils.parseUnits(amount.toString(), tokenInfo.decimals);
     }
-    
+
     // Execute smart token sale
     const saleResult = await ethChain.executeSmartTokenSale(
       tokenAddress,
@@ -1515,12 +1514,12 @@ async function handleEthSellExecute(ctx) {
       wallet.privateKey,
       userData.settings?.slippage || 3
     );
-    
+
     // Calculate fees on received ETH
     const receivedEth = parseFloat(saleResult.details.actualAmount || '0');
     const feePercent = userData.premium?.active ? 0.5 : 1.0;
     const feeAmount = receivedEth * (feePercent / 100);
-    
+
     // Collect fee (non-blocking)
     let feeResult = null;
     if (feeAmount > 0) {
@@ -1530,7 +1529,7 @@ async function handleEthSellExecute(ctx) {
         console.log('Fee collection failed:', feeError.message);
       }
     }
-    
+
     // Record transaction
     await recordTransaction(userId, {
       type: 'sell',
@@ -1544,10 +1543,10 @@ async function handleEthSellExecute(ctx) {
       timestamp: Date.now(),
       chain: 'ethereum'
     });
-    
+
     // Track revenue
     await trackRevenue(feeAmount);
-    
+
     const successMessage = `✅ **SELL ORDER COMPLETED!**
 
 🎯 **Token:** ${tokenInfo.symbol}
@@ -1566,7 +1565,7 @@ async function handleEthSellExecute(ctx) {
       },
       parse_mode: 'Markdown'
     });
-    
+
   } catch (error) {
     await ctx.editMessageText(`❌ **Sell order failed:**\n\n${error.message}`, {
       reply_markup: {
@@ -1859,9 +1858,7 @@ async function stopSnipeMonitoring(userId) {
 // Helper function to record transaction
 async function recordTransaction(userId, transactionData) {
   try {
-    const userData = await loadUserData(userId);
-
-    if (!userData.transactions) {
+    const userData = await loadUserData(userId);    if (!userData.transactions) {
       userData.transactions = [];
     }
 
@@ -1911,27 +1908,27 @@ async function trackRevenue(feeAmount) {
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id.toString();
   const userState = userStates.get(userId);
-  
+
   if (!userState) return;
-  
+
   try {
     switch (userState.action) {
       case 'importing_eth_wallet':
         await handleWalletImport(ctx, userId);
         break;
-        
+
       case 'entering_token_address':
         await handleTokenAddress(ctx, userId);
         break;
-        
+
       case 'entering_sell_token_address':
         await handleSellTokenAddress(ctx, userId);
         break;
-        
+
       case 'entering_custom_amount':
         await handleCustomAmount(ctx, userId, userState.tokenAddress);
         break;
-        
+
       default:
         userStates.delete(userId);
         break;
@@ -1946,39 +1943,39 @@ bot.on('text', async (ctx) => {
 // Handle wallet import
 async function handleWalletImport(ctx, userId) {
   const privateKey = ctx.message.text.trim();
-  
+
   try {
     userStates.delete(userId);
-    
+
     // Validate private key format
     if (!privateKey.match(/^0x[a-fA-F0-9]{64}$/)) {
       throw new Error('Invalid private key format. Must be 64 hex characters starting with 0x');
     }
-    
+
     // Test private key
     const wallet = new ethers.Wallet(privateKey);
     const address = wallet.address;
-    
+
     // Encrypt and store
     const encryptedKey = await walletManager.encryptPrivateKey(privateKey, userId);
     const userData = await loadUserData(userId);
-    
+
     if (!userData.ethWallets) {
       userData.ethWallets = [];
     }
-    
+
     userData.ethWallets.push(encryptedKey);
     userData.activeEthWallet = userData.ethWallets.length - 1;
-    
+
     await saveUserData(userId, userData);
-    
+
     // Delete the message containing private key for security
     try {
       await ctx.deleteMessage();
     } catch (deleteError) {
       // Ignore if we can't delete
     }
-    
+
     await ctx.reply(
       `✅ **Wallet imported successfully!**
 
@@ -2095,7 +2092,12 @@ async function showSolSnipe(ctx) {
   await ctx.editMessageText(
     `🟣 **SOL SNIPE TOKEN**
 
+🚧 SOL token sniping is under development.
 
+This feature will include:
+• Snipe new SPL tokens
+• Raydium/Orca monitoring
+• Auto-buy on liquidity
 
 Coming soon!`,
     {
@@ -2200,20 +2202,6 @@ Coming soon!`,
     }
   );
 });
-• Snipe new SPL tokens
-• Raydium/Orca monitoring
-• Auto-buy on liquidity
-
-Coming soon!`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
-        ]
-      }
-    }
-  );
-}
 
 // SOL Buy Handlers
 async function handleSolBuyAmount(ctx) {
@@ -2326,7 +2314,7 @@ async function handleSellTokenAddress(ctx, userId) {
 
     const userData = await loadUserData(userId);
     const wallet = await getWalletForTrading(userId, userData);
-    
+
     const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
     const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
 
@@ -2392,7 +2380,7 @@ async function handleCustomAmount(ctx, userId, tokenAddress) {
     // Continue with buy flow using custom amount
     const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
     const shortId = storeTokenMapping(tokenAddress);
-    
+
     // Simulate the amount selection
     await handleEthBuyAmount({
       match: [null, amountFloat.toString(), shortId],
