@@ -340,6 +340,26 @@ bot.action('main_menu', showMainMenu);
 bot.action('chain_eth', showEthMenu);
 bot.action('chain_sol', showSolMenu);
 
+// ETH Trading handlers
+bot.action('eth_wallet', showEthWallet);
+bot.action('eth_buy', showEthBuy);
+bot.action('eth_sell', showEthSell);
+bot.action('eth_mirror', showEthMirror);
+
+// ETH Buy amount handlers
+bot.action(/^eth_buy_amount_(.+)_(.+)$/, handleEthBuyAmount);
+bot.action(/^eth_buy_execute_(.+)_(.+)$/, handleEthBuyExecute);
+
+// ETH Sell handlers
+bot.action(/^eth_sell_token_(.+)$/, handleEthSellToken);
+bot.action(/^eth_sell_percentage_(.+)_(.+)$/, handleEthSellPercentage);
+bot.action(/^eth_sell_execute_(.+)_(.+)_(.+)$/, handleEthSellExecute);
+
+// Wallet management handlers
+bot.action('eth_wallet_import', handleEthWalletImport);
+bot.action('eth_wallet_generate', handleEthWalletGenerate);
+bot.action('eth_wallet_view', handleEthWalletView);
+
 // ETH Chain Menu
 async function showEthMenu(ctx) {
   const keyboard = [
@@ -389,6 +409,687 @@ You are here: SOL Trading
 Choose your action:`,
     { 
       reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+}
+
+// ====================================================================
+// ETH WALLET MANAGEMENT
+// ====================================================================
+
+async function showEthWallet(ctx) {
+  const userId = ctx.from.id.toString();
+  
+  try {
+    const userData = await loadUserData(userId);
+    
+    let walletInfo = '🔗 **ETHEREUM WALLET**\n\n';
+    
+    if (userData.ethWallets && userData.ethWallets.length > 0) {
+      try {
+        const address = await getWalletAddress(userId, userData);
+        const balance = await ethChain.getETHBalance(address);
+        
+        walletInfo += `📍 **Address:** \`${address}\`\n`;
+        walletInfo += `💰 **Balance:** ${balance} ETH\n\n`;
+        walletInfo += `🔐 Wallet is encrypted and secure`;
+        
+        const keyboard = [
+          [{ text: '📥 Import Wallet', callback_data: 'eth_wallet_import' }],
+          [{ text: '🔄 Generate New', callback_data: 'eth_wallet_generate' }],
+          [{ text: '👁️ View Details', callback_data: 'eth_wallet_view' }],
+          [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+        ];
+        
+        await ctx.editMessageText(walletInfo, {
+          reply_markup: { inline_keyboard: keyboard },
+          parse_mode: 'Markdown'
+        });
+      } catch (error) {
+        throw new Error('Failed to load wallet information');
+      }
+    } else {
+      walletInfo += '❌ No wallet found\n\n';
+      walletInfo += 'Import an existing wallet or generate a new one to start trading.';
+      
+      const keyboard = [
+        [{ text: '📥 Import Wallet', callback_data: 'eth_wallet_import' }],
+        [{ text: '🔄 Generate New', callback_data: 'eth_wallet_generate' }],
+        [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+      ];
+      
+      await ctx.editMessageText(walletInfo, {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      });
+    }
+  } catch (error) {
+    await ctx.editMessageText(`❌ Error: ${error.message}`, {
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]]
+      }
+    });
+  }
+}
+
+async function handleEthWalletImport(ctx) {
+  const userId = ctx.from.id.toString();
+  userStates.set(userId, { action: 'importing_eth_wallet' });
+  
+  await ctx.editMessageText(
+    `🔐 **IMPORT ETH WALLET**
+
+Send me your private key to import your wallet.
+
+⚠️ **Security Note:** Your private key will be encrypted with AES-256 encryption and stored securely.
+
+🔙 Send /cancel to go back`,
+    { parse_mode: 'Markdown' }
+  );
+}
+
+async function handleEthWalletGenerate(ctx) {
+  const userId = ctx.from.id.toString();
+  
+  try {
+    const newWallet = ethers.Wallet.createRandom();
+    const privateKey = newWallet.privateKey;
+    const address = newWallet.address;
+    
+    // Encrypt and store wallet
+    const encryptedKey = await walletManager.encryptPrivateKey(privateKey, userId);
+    const userData = await loadUserData(userId);
+    
+    if (!userData.ethWallets) {
+      userData.ethWallets = [];
+    }
+    
+    userData.ethWallets.push(encryptedKey);
+    userData.activeEthWallet = userData.ethWallets.length - 1;
+    
+    await saveUserData(userId, userData);
+    
+    await ctx.editMessageText(
+      `✅ **NEW ETH WALLET GENERATED**
+
+📍 **Address:** \`${address}\`
+🔐 **Private Key:** \`${privateKey}\`
+
+⚠️ **IMPORTANT:** Save your private key securely! This is the only time it will be shown in plain text.
+
+💰 Send ETH to your address to start trading.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Back to Wallet', callback_data: 'eth_wallet' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  } catch (error) {
+    await ctx.editMessageText(`❌ Error generating wallet: ${error.message}`, {
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]]
+      }
+    });
+  }
+}
+
+async function handleEthWalletView(ctx) {
+  const userId = ctx.from.id.toString();
+  
+  try {
+    const userData = await loadUserData(userId);
+    const address = await getWalletAddress(userId, userData);
+    const balance = await ethChain.getETHBalance(address);
+    
+    const walletInfo = `👁️ **WALLET DETAILS**
+
+📍 **Address:** \`${address}\`
+💰 **ETH Balance:** ${balance} ETH
+🔗 **Network:** Ethereum Mainnet
+🔐 **Security:** AES-256 Encrypted
+
+[View on Etherscan](https://etherscan.io/address/${address})`;
+    
+    await ctx.editMessageText(walletInfo, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to Wallet', callback_data: 'eth_wallet' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    });
+  } catch (error) {
+    await ctx.editMessageText(`❌ Error: ${error.message}`, {
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]]
+      }
+    });
+  }
+}
+
+// ====================================================================
+// ETH BUY HANDLERS
+// ====================================================================
+
+async function showEthBuy(ctx) {
+  const userId = ctx.from.id.toString();
+  
+  try {
+    // Check if user has wallet
+    const userData = await loadUserData(userId);
+    if (!userData.ethWallets || userData.ethWallets.length === 0) {
+      await ctx.editMessageText(
+        `❌ **No wallet found**
+
+You need to import or generate a wallet first to start trading.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📥 Import Wallet', callback_data: 'eth_wallet_import' }],
+              [{ text: '🔄 Generate Wallet', callback_data: 'eth_wallet_generate' }],
+              [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+            ]
+          },
+          parse_mode: 'Markdown'
+        }
+      );
+      return;
+    }
+    
+    userStates.set(userId, { action: 'entering_token_address' });
+    
+    await ctx.editMessageText(
+      `💰 **BUY TOKEN**
+
+Send me the token contract address you want to buy.
+
+**Example:** \`0x1234567890abcdef1234567890abcdef12345678\`
+
+🔙 Send /cancel to go back`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (error) {
+    await ctx.editMessageText(`❌ Error: ${error.message}`, {
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]]
+      }
+    });
+  }
+}
+
+async function showEthBuyAmount(ctx, tokenAddress, tokenInfo) {
+  const keyboard = [
+    [
+      { text: '0.1 ETH', callback_data: `eth_buy_amount_0.1_${createShortTokenId(tokenAddress)}` },
+      { text: '0.5 ETH', callback_data: `eth_buy_amount_0.5_${createShortTokenId(tokenAddress)}` }
+    ],
+    [
+      { text: '1 ETH', callback_data: `eth_buy_amount_1_${createShortTokenId(tokenAddress)}` },
+      { text: '2 ETH', callback_data: `eth_buy_amount_2_${createShortTokenId(tokenAddress)}` }
+    ],
+    [{ text: '💎 Custom Amount', callback_data: `eth_buy_custom_${createShortTokenId(tokenAddress)}` }],
+    [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+  ];
+
+  const message = `💰 **BUY ${tokenInfo.symbol}**
+
+📍 **Token:** ${tokenInfo.name} (${tokenInfo.symbol})
+📄 **Contract:** \`${tokenAddress}\`
+
+Choose amount to buy:`;
+
+  try {
+    await ctx.editMessageText(message, {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    });
+  } catch (error) {
+    await ctx.reply(message, {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    });
+  }
+}
+
+async function handleEthBuyAmount(ctx) {
+  const userId = ctx.from.id.toString();
+  const match = ctx.match;
+  const amount = parseFloat(match[1]);
+  const shortId = match[2];
+  
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    
+    // Check rate limit
+    if (!checkRateLimit(userId)) {
+      await ctx.answerCbQuery('⚠️ Rate limit exceeded. Please wait before making another request.', { show_alert: true });
+      return;
+    }
+    updateRateLimit(userId);
+    
+    const userData = await loadUserData(userId);
+    const wallet = await getWalletForTrading(userId, userData);
+    
+    // Check balance
+    const balance = await ethChain.getETHBalance(wallet.address);
+    const balanceFloat = parseFloat(balance);
+    
+    if (balanceFloat < amount + 0.02) { // Amount + gas buffer
+      await ctx.answerCbQuery(`❌ Insufficient balance. Need ${amount + 0.02} ETH, have ${balance} ETH`, { show_alert: true });
+      return;
+    }
+    
+    // Get token info and quote
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const amountWei = ethers.utils.parseEther(amount.toString());
+    const quote = await ethChain.getSwapQuote(ethChain.contracts.WETH, tokenAddress, amountWei);
+    const expectedTokens = parseFloat(ethers.utils.formatUnits(quote.outputAmount, tokenInfo.decimals));
+    
+    // Calculate fees
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const feeAmount = amount * (feePercent / 100);
+    const netTradeAmount = amount - feeAmount;
+    
+    const message = `🔥 **CONFIRM BUY ORDER**
+
+🎯 **Token:** ${tokenInfo.symbol}
+💰 **Total Amount:** ${amount} ETH
+💸 **Fee (${feePercent}%):** ${feeAmount.toFixed(4)} ETH
+📊 **Trade Amount:** ${netTradeAmount.toFixed(4)} ETH
+🎁 **Expected:** ~${expectedTokens.toFixed(2)} ${tokenInfo.symbol}
+
+⚠️ **Gas fees apply separately**`;
+
+    const keyboard = [
+      [{ text: '✅ Confirm Buy', callback_data: `eth_buy_execute_${amount}_${shortId}` }],
+      [{ text: '❌ Cancel', callback_data: 'chain_eth' }]
+    ];
+
+    await ctx.editMessageText(message, {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    });
+  } catch (error) {
+    await ctx.answerCbQuery(`❌ Error: ${error.message}`, { show_alert: true });
+  }
+}
+
+async function handleEthBuyExecute(ctx) {
+  const userId = ctx.from.id.toString();
+  const match = ctx.match;
+  const amount = parseFloat(match[1]);
+  const shortId = match[2];
+  
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    
+    await ctx.editMessageText('⏳ **Executing buy order...**\n\nPlease wait...', { parse_mode: 'Markdown' });
+    
+    const userData = await loadUserData(userId);
+    const wallet = await getWalletForTrading(userId, userData);
+    
+    // Calculate fees
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const feeAmount = amount * (feePercent / 100);
+    const netTradeAmount = amount - feeAmount;
+    
+    // Execute swap
+    const swapResult = await ethChain.executeSwap(
+      ethChain.contracts.WETH,
+      tokenAddress,
+      ethers.utils.parseEther(netTradeAmount.toString()),
+      wallet.privateKey,
+      userData.settings?.slippage || 3
+    );
+    
+    // Collect fee (non-blocking)
+    let feeResult = null;
+    if (feeAmount > 0) {
+      try {
+        feeResult = await ethChain.collectFee(wallet.privateKey, feeAmount.toString());
+      } catch (feeError) {
+        console.log('Fee collection failed:', feeError.message);
+      }
+    }
+    
+    // Record transaction
+    await recordTransaction(userId, {
+      type: 'buy',
+      tokenAddress,
+      amount: amount.toString(),
+      tradeAmount: netTradeAmount.toString(),
+      feeAmount: feeAmount.toString(),
+      txHash: swapResult.hash,
+      feeHash: feeResult?.hash || null,
+      timestamp: Date.now(),
+      chain: 'ethereum'
+    });
+    
+    // Track revenue
+    await trackRevenue(feeAmount);
+    
+    const successMessage = `✅ **BUY ORDER COMPLETED!**
+
+🎯 **Token:** ${tokenAddress.slice(0, 8)}...
+💰 **Amount:** ${netTradeAmount} ETH
+📊 **Fee:** ${feeAmount} ETH
+🔗 **TX:** [View on Etherscan](https://etherscan.io/tx/${swapResult.hash})
+
+🎉 Your tokens will appear in your wallet shortly!`;
+
+    await ctx.editMessageText(successMessage, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    });
+    
+  } catch (error) {
+    await ctx.editMessageText(`❌ **Buy order failed:**\n\n${error.message}`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Try Again', callback_data: 'eth_buy' }],
+          [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    });
+  }
+}
+
+// ====================================================================
+// ETH SELL HANDLERS
+// ====================================================================
+
+async function showEthSell(ctx) {
+  const userId = ctx.from.id.toString();
+  
+  try {
+    // Check if user has wallet
+    const userData = await loadUserData(userId);
+    if (!userData.ethWallets || userData.ethWallets.length === 0) {
+      await ctx.editMessageText(
+        `❌ **No wallet found**
+
+You need to import or generate a wallet first to start trading.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📥 Import Wallet', callback_data: 'eth_wallet_import' }],
+              [{ text: '🔄 Generate Wallet', callback_data: 'eth_wallet_generate' }],
+              [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+            ]
+          },
+          parse_mode: 'Markdown'
+        }
+      );
+      return;
+    }
+    
+    userStates.set(userId, { action: 'entering_sell_token_address' });
+    
+    await ctx.editMessageText(
+      `💸 **SELL TOKEN**
+
+Send me the token contract address you want to sell.
+
+**Example:** \`0x1234567890abcdef1234567890abcdef12345678\`
+
+🔙 Send /cancel to go back`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (error) {
+    await ctx.editMessageText(`❌ Error: ${error.message}`, {
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]]
+      }
+    });
+  }
+}
+
+async function showEthSellPercentage(ctx, tokenAddress, tokenInfo, tokenBalance) {
+  const shortId = storeTokenMapping(tokenAddress);
+  const balanceFormatted = parseFloat(ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals));
+  
+  const keyboard = [
+    [
+      { text: '25%', callback_data: `eth_sell_percentage_25_${shortId}` },
+      { text: '50%', callback_data: `eth_sell_percentage_50_${shortId}` }
+    ],
+    [
+      { text: '75%', callback_data: `eth_sell_percentage_75_${shortId}` },
+      { text: '100%', callback_data: `eth_sell_percentage_100_${shortId}` }
+    ],
+    [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+  ];
+
+  const message = `💸 **SELL ${tokenInfo.symbol}**
+
+📍 **Token:** ${tokenInfo.name} (${tokenInfo.symbol})
+💰 **Balance:** ${balanceFormatted.toFixed(4)} ${tokenInfo.symbol}
+📄 **Contract:** \`${tokenAddress}\`
+
+Choose percentage to sell:`;
+
+  try {
+    await ctx.editMessageText(message, {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    });
+  } catch (error) {
+    await ctx.reply(message, {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    });
+  }
+}
+
+async function handleEthSellToken(ctx) {
+  const userId = ctx.from.id.toString();
+  const shortId = ctx.match[1];
+  
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    const userData = await loadUserData(userId);
+    const wallet = await getWalletForTrading(userId, userData);
+    
+    // Get token info and balance
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
+    
+    if (tokenBalance.isZero()) {
+      await ctx.answerCbQuery(`❌ No ${tokenInfo.symbol} balance found`, { show_alert: true });
+      return;
+    }
+    
+    await showEthSellPercentage(ctx, tokenAddress, tokenInfo, tokenBalance);
+    
+  } catch (error) {
+    await ctx.answerCbQuery(`❌ Error: ${error.message}`, { show_alert: true });
+  }
+}
+
+async function handleEthSellPercentage(ctx) {
+  const userId = ctx.from.id.toString();
+  const match = ctx.match;
+  const percentage = parseInt(match[1]);
+  const shortId = match[2];
+  
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    
+    // Check rate limit
+    if (!checkRateLimit(userId)) {
+      await ctx.answerCbQuery('⚠️ Rate limit exceeded. Please wait before making another request.', { show_alert: true });
+      return;
+    }
+    updateRateLimit(userId);
+    
+    const userData = await loadUserData(userId);
+    const wallet = await getWalletForTrading(userId, userData);
+    
+    // Get token info and balance
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
+    const balanceFormatted = parseFloat(ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals));
+    
+    // Calculate sell amount
+    const sellAmount = balanceFormatted * (percentage / 100);
+    const sellAmountWei = ethChain.calculateSmartSellAmount(tokenBalance, percentage, tokenInfo.decimals);
+    
+    // Get swap quote
+    const quote = await ethChain.getSwapQuote(tokenAddress, ethChain.contracts.WETH, sellAmountWei);
+    const expectedEth = parseFloat(ethers.utils.formatEther(quote.outputAmount));
+    
+    // Calculate fees
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const feeAmount = expectedEth * (feePercent / 100);
+    const netReceive = expectedEth - feeAmount;
+    
+    const message = `🔥 **CONFIRM SELL ORDER**
+
+🎯 **Token:** ${tokenInfo.symbol}
+💸 **Selling:** ${sellAmount.toFixed(4)} ${tokenInfo.symbol} (${percentage}%)
+💰 **Expected ETH:** ${expectedEth.toFixed(6)} ETH
+💸 **Fee (${feePercent}%):** ${feeAmount.toFixed(6)} ETH
+📊 **You Receive:** ${netReceive.toFixed(6)} ETH
+
+⚠️ **Gas fees apply separately**`;
+
+    const keyboard = [
+      [{ text: '✅ Confirm Sell', callback_data: `eth_sell_execute_${percentage}_${shortId}_percent` }],
+      [{ text: '❌ Cancel', callback_data: 'chain_eth' }]
+    ];
+
+    await ctx.editMessageText(message, {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    });
+  } catch (error) {
+    await ctx.answerCbQuery(`❌ Error: ${error.message}`, { show_alert: true });
+  }
+}
+
+async function handleEthSellExecute(ctx) {
+  const userId = ctx.from.id.toString();
+  const match = ctx.match;
+  const amount = parseFloat(match[1]);
+  const shortId = match[2];
+  const amountType = match[3];
+  
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+    
+    await ctx.editMessageText('⏳ **Executing sell order...**\n\nPlease wait...', { parse_mode: 'Markdown' });
+    
+    const userData = await loadUserData(userId);
+    const wallet = await getWalletForTrading(userId, userData);
+    
+    // Get token info and balance
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
+    const balanceFormatted = parseFloat(ethers.utils.formatUnits(tokenBalance, tokenInfo.decimals));
+    
+    // Calculate sell amount
+    let sellAmountWei;
+    if (amountType === 'percent') {
+      sellAmountWei = ethChain.calculateSmartSellAmount(tokenBalance, amount, tokenInfo.decimals);
+    } else {
+      sellAmountWei = ethers.utils.parseUnits(amount.toString(), tokenInfo.decimals);
+    }
+    
+    // Execute smart token sale
+    const saleResult = await ethChain.executeSmartTokenSale(
+      tokenAddress,
+      ethChain.contracts.WETH,
+      amount,
+      wallet.privateKey,
+      userData.settings?.slippage || 3
+    );
+    
+    // Calculate fees on received ETH
+    const receivedEth = parseFloat(saleResult.details.actualAmount || '0');
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const feeAmount = receivedEth * (feePercent / 100);
+    
+    // Collect fee (non-blocking)
+    let feeResult = null;
+    if (feeAmount > 0) {
+      try {
+        feeResult = await ethChain.collectFee(wallet.privateKey, feeAmount.toString());
+      } catch (feeError) {
+        console.log('Fee collection failed:', feeError.message);
+      }
+    }
+    
+    // Record transaction
+    await recordTransaction(userId, {
+      type: 'sell',
+      tokenAddress,
+      amount: amount.toString(),
+      amountType: amountType,
+      receivedEth: receivedEth.toString(),
+      feeAmount: feeAmount.toString(),
+      txHash: saleResult.transaction.hash,
+      feeHash: feeResult?.hash || null,
+      timestamp: Date.now(),
+      chain: 'ethereum'
+    });
+    
+    // Track revenue
+    await trackRevenue(feeAmount);
+    
+    const successMessage = `✅ **SELL ORDER COMPLETED!**
+
+🎯 **Token:** ${tokenInfo.symbol}
+💸 **Sold:** ${saleResult.details.amountSold} ${tokenInfo.symbol}
+💰 **Received:** ${(receivedEth - feeAmount).toFixed(6)} ETH
+📊 **Fee:** ${feeAmount.toFixed(6)} ETH
+🔗 **TX:** [View on Etherscan](https://etherscan.io/tx/${saleResult.transaction.hash})
+
+💰 ETH has been added to your wallet!`;
+
+    await ctx.editMessageText(successMessage, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    });
+    
+  } catch (error) {
+    await ctx.editMessageText(`❌ **Sell order failed:**\n\n${error.message}`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Try Again', callback_data: 'eth_sell' }],
+          [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    });
+  }
+}
+
+async function showEthMirror(ctx) {
+  await ctx.editMessageText(
+    `🪞 **MIRROR TRADING**
+
+Mirror trading feature coming soon! This will allow you to automatically copy trades from other wallets.
+
+🚧 Under development...`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+        ]
+      },
       parse_mode: 'Markdown'
     }
   );
@@ -598,6 +1299,249 @@ async function startBot() {
 // Graceful shutdown
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+// ====================================================================
+// TEXT MESSAGE HANDLERS
+// ====================================================================
+
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const userState = userStates.get(userId);
+  
+  if (!userState) return;
+  
+  try {
+    switch (userState.action) {
+      case 'importing_eth_wallet':
+        await handleWalletImport(ctx, userId);
+        break;
+        
+      case 'entering_token_address':
+        await handleTokenAddress(ctx, userId);
+        break;
+        
+      case 'entering_sell_token_address':
+        await handleSellTokenAddress(ctx, userId);
+        break;
+        
+      case 'entering_custom_amount':
+        await handleCustomAmount(ctx, userId, userState.tokenAddress);
+        break;
+        
+      default:
+        userStates.delete(userId);
+        break;
+    }
+  } catch (error) {
+    console.log('Text handler error:', error.message);
+    userStates.delete(userId);
+    await ctx.reply('❌ An error occurred. Please try again.');
+  }
+});
+
+// Handle wallet import
+async function handleWalletImport(ctx, userId) {
+  const privateKey = ctx.message.text.trim();
+  
+  try {
+    userStates.delete(userId);
+    
+    // Validate private key format
+    if (!privateKey.match(/^0x[a-fA-F0-9]{64}$/)) {
+      throw new Error('Invalid private key format. Must be 64 hex characters starting with 0x');
+    }
+    
+    // Test private key
+    const wallet = new ethers.Wallet(privateKey);
+    const address = wallet.address;
+    
+    // Encrypt and store
+    const encryptedKey = await walletManager.encryptPrivateKey(privateKey, userId);
+    const userData = await loadUserData(userId);
+    
+    if (!userData.ethWallets) {
+      userData.ethWallets = [];
+    }
+    
+    userData.ethWallets.push(encryptedKey);
+    userData.activeEthWallet = userData.ethWallets.length - 1;
+    
+    await saveUserData(userId, userData);
+    
+    // Delete the message containing private key for security
+    try {
+      await ctx.deleteMessage();
+    } catch (deleteError) {
+      // Ignore if we can't delete
+    }
+    
+    await ctx.reply(
+      `✅ **Wallet imported successfully!**
+
+📍 **Address:** \`${address}\`
+🔐 **Security:** Your private key has been encrypted and stored securely.
+
+You can now start trading!`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  } catch (error) {
+    userStates.delete(userId);
+    await ctx.reply(`❌ Error importing wallet: ${error.message}`);
+  }
+}
+
+// Token address handler - will process buy token addresses
+async function handleTokenAddress(ctx, userId) {
+  const tokenAddress = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format');
+    }
+
+    const validatingMessage = await ctx.reply('⏳ **Validating token...**', {
+      parse_mode: 'Markdown'
+    });
+
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+
+    // Delete the "validating" message
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, validatingMessage.message_id);
+    } catch (deleteError) {
+      // Ignore if we can't delete the message
+    }
+
+    await showEthBuyAmount(ctx, tokenAddress, tokenInfo);
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid token contract address.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'eth_buy' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+}
+
+// Sell token address handler
+async function handleSellTokenAddress(ctx, userId) {
+  const tokenAddress = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format');
+    }
+
+    const validatingMessage = await ctx.reply('⏳ **Validating token...**', {
+      parse_mode: 'Markdown'
+    });
+
+    const userData = await loadUserData(userId);
+    const wallet = await getWalletForTrading(userId, userData);
+    
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
+
+    // Delete the "validating" message
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, validatingMessage.message_id);
+    } catch (deleteError) {
+      // Ignore if we can't delete the message
+    }
+
+    if (tokenBalance.isZero()) {
+      await ctx.reply(
+        `❌ **No balance found**
+
+You don't have any ${tokenInfo.symbol} tokens to sell.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔄 Try Another Token', callback_data: 'eth_sell' }],
+              [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+            ]
+          },
+          parse_mode: 'Markdown'
+        }
+      );
+      return;
+    }
+
+    await showEthSellPercentage(ctx, tokenAddress, tokenInfo, tokenBalance);
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid token contract address.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'eth_sell' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+}
+
+// Custom amount handler - will process custom ETH amounts
+async function handleCustomAmount(ctx, userId, tokenAddress) {
+  const amount = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0) {
+      throw new Error('Invalid amount. Please enter a positive number.');
+    }
+
+    // Continue with buy flow using custom amount
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const shortId = storeTokenMapping(tokenAddress);
+    
+    // Simulate the amount selection
+    await handleEthBuyAmount({
+      match: [null, amountFloat.toString(), shortId],
+      from: { id: parseInt(userId) },
+      answerCbQuery: async (msg, opts) => {},
+      editMessageText: async (text, opts) => {
+        await ctx.reply(text, opts);
+      }
+    });
+
+  } catch (error) {
+    userStates.delete(userId);
+    await ctx.reply(`❌ Error: ${error.message}`);
+  }
+}
 
 // Start the bot
 startBot();
