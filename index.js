@@ -39,10 +39,28 @@ function storeTokenMapping(tokenAddress) {
 }
 
 function getFullTokenAddress(shortId) {
+  logger.debug(`🔍 GETTING FULL TOKEN ADDRESS`, {
+    shortId,
+    tokenMappingsSize: tokenMappings.size,
+    availableMappings: Array.from(tokenMappings.keys()),
+    hasMapping: tokenMappings.has(shortId)
+  });
+
   const fullAddress = tokenMappings.get(shortId);
   if (!fullAddress) {
-    throw new Error('Token not found');
+    logger.error(`❌ TOKEN MAPPING NOT FOUND`, {
+      shortId,
+      tokenMappingsSize: tokenMappings.size,
+      availableMappings: Array.from(tokenMappings.keys())
+    });
+    throw new Error(`Token mapping not found for ID: ${shortId}. Please try entering the token address again.`);
   }
+  
+  logger.debug(`✅ TOKEN ADDRESS FOUND`, {
+    shortId,
+    fullAddress
+  });
+  
   return fullAddress;
 }
 
@@ -1521,16 +1539,26 @@ Send me the token contract address you want to buy.
 }
 
 async function showEthBuyAmount(ctx, tokenAddress, tokenInfo) {
+  // Store token mapping and get short ID
+  const shortId = storeTokenMapping(tokenAddress);
+  
+  logger.info(`💰 SHOWING BUY AMOUNT MENU`, {
+    tokenAddress,
+    tokenSymbol: tokenInfo.symbol,
+    shortId,
+    tokenMappingsSize: tokenMappings.size
+  });
+
   const keyboard = [
     [
-      { text: '0.1 ETH', callback_data: `eth_buy_amount_0.1_${createShortTokenId(tokenAddress)}` },
-      { text: '0.5 ETH', callback_data: `eth_buy_amount_0.5_${createShortTokenId(tokenAddress)}` }
+      { text: '0.1 ETH', callback_data: `eth_buy_amount_0.1_${shortId}` },
+      { text: '0.5 ETH', callback_data: `eth_buy_amount_0.5_${shortId}` }
     ],
     [
-      { text: '1 ETH', callback_data: `eth_buy_amount_1_${createShortTokenId(tokenAddress)}` },
-      { text: '2 ETH', callback_data: `eth_buy_amount_2_${createShortTokenId(tokenAddress)}` }
+      { text: '1 ETH', callback_data: `eth_buy_amount_1_${shortId}` },
+      { text: '2 ETH', callback_data: `eth_buy_amount_2_${shortId}` }
     ],
-    [{ text: '💎 Custom Amount', callback_data: `eth_buy_custom_${createShortTokenId(tokenAddress)}` }],
+    [{ text: '💎 Custom Amount', callback_data: `eth_buy_custom_${shortId}` }],
     [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
   ];
 
@@ -1625,7 +1653,23 @@ async function handleEthBuyCustom(ctx) {
   const shortId = ctx.match[1];
 
   try {
+    logUserAction('ETH_BUY_CUSTOM_AMOUNT', userId, { shortId });
+
+    logger.debug(`🔍 CUSTOM BUY HANDLER`, {
+      userId,
+      shortId,
+      tokenMappingsSize: tokenMappings.size,
+      availableMappings: Array.from(tokenMappings.keys())
+    });
+
     const tokenAddress = getFullTokenAddress(shortId);
+    
+    logger.debug(`✅ TOKEN ADDRESS RETRIEVED`, {
+      userId,
+      shortId,
+      tokenAddress
+    });
+
     const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
 
     // Set user state for custom amount input
@@ -1634,6 +1678,12 @@ async function handleEthBuyCustom(ctx) {
       tokenAddress: tokenAddress,
       shortId: shortId,
       timestamp: Date.now()
+    });
+
+    logger.info(`📝 USER STATE SET FOR CUSTOM AMOUNT`, {
+      userId,
+      tokenAddress,
+      tokenSymbol: tokenInfo.symbol
     });
 
     await ctx.editMessageText(
@@ -1654,9 +1704,23 @@ async function handleEthBuyCustom(ctx) {
     );
 
   } catch (error) {
-    await ctx.editMessageText(`❌ Error: ${error.message}`, {
+    logger.error(`❌ CUSTOM BUY HANDLER ERROR`, {
+      userId,
+      shortId,
+      error: error.message,
+      stack: error.stack,
+      tokenMappingsSize: tokenMappings.size,
+      availableMappings: Array.from(tokenMappings.keys())
+    });
+
+    await ctx.editMessageText(`❌ Error: ${error.message}
+
+Please try entering the token address again.`, {
       reply_markup: {
-        inline_keyboard: [[{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]]
+        inline_keyboard: [
+          [{ text: '🔄 Try Again', callback_data: 'eth_buy' }],
+          [{ text: '🔙 Back to ETH', callback_data: 'chain_eth' }]
+        ]
       }
     });
   }
