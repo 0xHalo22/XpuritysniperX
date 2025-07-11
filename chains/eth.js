@@ -590,13 +590,13 @@ class EthChain {
             from: recipient
           });
 
-          // Use a reasonable buffer (30% instead of 100%)
-          const bufferedGas = gasEstimate.mul(130).div(100);
-          
-          // Set reasonable min/max gas limits
-          const MIN_GAS = ethers.BigNumber.from(150000);
-          const MAX_GAS = ethers.BigNumber.from(300000);
-          
+          // Use minimal buffer (10% only)
+          const bufferedGas = gasEstimate.mul(110).div(100);
+
+          // Set realistic min/max gas limits
+          const MIN_GAS = ethers.BigNumber.from(21000);  // ETH transfer minimum
+          const MAX_GAS = ethers.BigNumber.from(180000); // Reasonable swap maximum
+
           let finalGas = bufferedGas;
           if (finalGas.lt(MIN_GAS)) finalGas = MIN_GAS;
           if (finalGas.gt(MAX_GAS)) finalGas = MAX_GAS;
@@ -619,7 +619,7 @@ class EthChain {
 
           // Level 2: Conservative fallback with reasonable limits
           const gasPrice = await provider.getGasPrice();
-          const conservativeGas = ethers.BigNumber.from(200000); // Reasonable default
+          const conservativeGas = ethers.BigNumber.from(100000); // More reasonable
 
           console.log(`🛡️ Using conservative gas: ${conservativeGas.toString()}`);
 
@@ -638,7 +638,7 @@ class EthChain {
         try {
           const provider = await this.getProvider();
           const gasPrice = await provider.getGasPrice();
-          const emergencyGas = ethers.BigNumber.from(250000); // Reasonable emergency fallback
+          const emergencyGas = ethers.BigNumber.from(150000);     // Emergency only
 
           console.log(`🚨 Emergency gas: ${emergencyGas.toString()}`);
 
