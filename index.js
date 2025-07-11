@@ -2098,9 +2098,9 @@ async function showSolSnipe(ctx) {
 🚧 SOL sniping is under development.
 
 This feature will include:
-• Snipe new SPL tokens
-• Raydium/Orca monitoring
-• Auto-buy on liquidity
+- Snipe new SPL tokens
+- Raydium/Orca monitoring
+- Auto-buy on liquidity
 
 Coming soon!`,
     {
