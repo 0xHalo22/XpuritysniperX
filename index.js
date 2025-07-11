@@ -332,6 +332,120 @@ async function getSolWalletAddress(userId, userData) {
 }
 
 // ====================================================================
+// SOL HANDLERS - BASIC IMPLEMENTATIONS TO PREVENT CRASHES
+// ====================================================================
+
+async function showSolWallet(ctx) {
+  await ctx.editMessageText(
+    `🟣 **SOL WALLET**
+
+🚧 SOL wallet management is under development.
+
+This feature will include:
+• Import/Generate SOL wallets
+• View SOL balance
+• Transaction history
+
+Coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      }
+    }
+  );
+}
+
+async function showSolBuy(ctx) {
+  await ctx.editMessageText(
+    `🟣 **SOL BUY TOKEN**
+
+🚧 SOL token buying is under development.
+
+This feature will include:
+• Buy SPL tokens with SOL
+• Jupiter DEX integration
+• Real-time pricing
+
+Coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      }
+    }
+  );
+}
+
+async function showSolSell(ctx) {
+  await ctx.editMessageText(
+    `🟣 **SOL SELL TOKEN**
+
+🚧 SOL token selling is under development.
+
+This feature will include:
+• Sell SPL tokens for SOL
+• Jupiter DEX integration
+• Portfolio management
+
+Coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      }
+    }
+  );
+}
+
+async function showSolMirror(ctx) {
+  await ctx.editMessageText(
+    `🟣 **SOL MIRROR TRADING**
+
+🚧 SOL mirror trading is under development.
+
+This feature will include:
+• Copy SOL wallet trades
+• Real-time monitoring
+• Auto-execution
+
+Coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      }
+    }
+  );
+}
+
+async function showSolSnipe(ctx) {
+  await ctx.editMessageText(
+    `🟣 **SOL SNIPE TOKEN**
+
+🚧 SOL token sniping is under development.
+
+This feature will include:
+• Snipe new SPL tokens
+• Raydium/Orca monitoring
+• Auto-buy on liquidity
+
+Coming soon!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+        ]
+      }
+    }
+  );
+}
+
+// ====================================================================
 // MAIN MENU HANDLERS
 // ====================================================================
 
@@ -1482,8 +1596,8 @@ async function handleEthSellExecute(ctx) {
   const userId = ctx.from.id.toString();
   const match = ctx.match;
   const amount = parseFloat(match[1]);
-  const shortId = ctx.match[2];
-  const amountType = ctx.match[3];
+  const shortId = match[2];
+  const amountType = match[3];
 
   try {
     const tokenAddress = getFullTokenAddress(shortId);
@@ -1787,7 +1901,7 @@ async function startDegenModeMonitoring(userId) {
 
         if (token0.toLowerCase() === wethAddress) {
           newTokenAddress = token1;
-        } else if (token1.toLowerCase() === wethAddress) {
+        } else if (token1.toLowerCase() === wethAddress === wethAddress) {
           newTokenAddress = token0;
         } else {
           console.log(`⚠️ Neither token is WETH, skipping pair: ${token0}, ${token1}`);
@@ -1858,9 +1972,7 @@ async function stopSnipeMonitoring(userId) {
 // Helper function to record transaction
 async function recordTransaction(userId, transactionData) {
   try {
-    const userData = await loadUserData(userId);
-
-    if (!userData.transactions) {
+    const userData = await loadUserData(userId);    if (!userData.transactions) {
       userData.transactions = [];
     }
 
@@ -1996,120 +2108,154 @@ You can now start trading!`,
     );
   } catch (error) {
     userStates.delete(userId);
-
-
-// ====================================================================
-// SOL HANDLERS - BASIC IMPLEMENTATIONS TO PREVENT CRASHES
-// ====================================================================
-
-async function showSolWallet(ctx) {
-  await ctx.editMessageText(
-    `🟣 **SOL WALLET**
-
-🚧 SOL wallet management is under development.
-
-This feature will include:
-• Import/Generate SOL wallets
-• View SOL balance
-• Transaction history
-
-Coming soon!`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
-        ]
-      }
-    }
-  );
+    await ctx.reply(`❌ Error importing wallet: ${error.message}`);
+  }
 }
 
-async function showSolBuy(ctx) {
-  await ctx.editMessageText(
-    `🟣 **SOL BUY TOKEN**
+// Token address handler
+async function handleTokenAddress(ctx, userId) {
+  const tokenAddress = ctx.message.text.trim();
 
-🚧 SOL token buying is under development.
+  try {
+    userStates.delete(userId);
 
-This feature will include:
-• Buy SPL tokens with SOL
-• Jupiter DEX integration
-• Real-time pricing
-
-Coming soon!`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
-        ]
-      }
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format');
     }
-  );
+
+    const validatingMessage = await ctx.reply('⏳ **Validating token...**', {
+      parse_mode: 'Markdown'
+    });
+
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+
+    // Delete the "validating" message
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, validatingMessage.message_id);
+    } catch (deleteError) {
+      // Ignore if we can't delete the message
+    }
+
+    await showEthBuyAmount(ctx, tokenAddress, tokenInfo);
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid token contract address.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'eth_buy' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  }
 }
 
-async function showSolSell(ctx) {
-  await ctx.editMessageText(
-    `🟣 **SOL SELL TOKEN**
+// Sell token address handler
+async function handleSellTokenAddress(ctx, userId) {
+  const tokenAddress = ctx.message.text.trim();
 
-🚧 SOL token selling is under development.
+  try {
+    userStates.delete(userId);
 
-This feature will include:
-• Sell SPL tokens for SOL
-• Jupiter DEX integration
-• Portfolio management
-
-Coming soon!`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
-        ]
-      }
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format');
     }
-  );
+
+    const validatingMessage = await ctx.reply('⏳ **Validating token...**', {
+      parse_mode: 'Markdown'
+    });
+
+    const userData = await loadUserData(userId);
+    const wallet = await getWalletForTrading(userId, userData);
+
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const tokenBalance = await ethChain.getTokenBalance(tokenAddress, wallet.address);
+
+    // Delete the "validating" message
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, validatingMessage.message_id);
+    } catch (deleteError) {
+      // Ignore if we can't delete the message
+    }
+
+    if (tokenBalance.isZero()) {
+      await ctx.reply(
+        `❌ **No balance found**
+
+You don't have any ${tokenInfo.symbol} tokens to sell.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔄 Try Another Token', callback_data: 'eth_sell' }],
+              [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+            ]
+          },
+          parse_mode: 'Markdown'
+        }
+      );
+      return;
+    }
+
+    await showEthSellPercentage(ctx, tokenAddress, tokenInfo, tokenBalance);
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid token contract address.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'eth_sell' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  }
 }
 
-async function showSolMirror(ctx) {
-  await ctx.editMessageText(
-    `🟣 **SOL MIRROR TRADING**
+// Custom amount handler
+async function handleCustomAmount(ctx, userId, tokenAddress) {
+  const amount = ctx.message.text.trim();
 
-🚧 SOL mirror trading is under development.
+  try {
+    userStates.delete(userId);
 
-This feature will include:
-• Copy SOL wallet trades
-• Real-time monitoring
-• Auto-execution
-
-Coming soon!`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
-        ]
-      }
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0) {
+      throw new Error('Invalid amount. Please enter a positive number.');
     }
-  );
-}
 
-async function showSolSnipe(ctx) {
-  await ctx.editMessageText(
-    `🟣 **SOL SNIPE TOKEN**
+    // Continue with buy flow using custom amount
+    const tokenInfo = await ethChain.getTokenInfo(tokenAddress);
+    const shortId = storeTokenMapping(tokenAddress);
 
-🚧 SOL token sniping is under development.
-
-This feature will include:
-• Snipe new SPL tokens
-• Raydium/Orca monitoring
-• Auto-buy on liquidity
-
-Coming soon!`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
-        ]
+    // Simulate the amount selection
+    await handleEthBuyAmount({
+      match: [null, amountFloat.toString(), shortId],
+      from: { id: parseInt(userId) },
+      answerCbQuery: async (msg, opts) => {},
+      editMessageText: async (text, opts) => {
+        await ctx.reply(text, opts);
       }
-    }
-  );
+    });
+
+  } catch (error) {
+    userStates.delete(userId);
+    await ctx.reply(`❌ Error: ${error.message}`);
+  }
 }
 
 // ====================================================================
@@ -2204,3 +2350,82 @@ Coming soon!`,
     }
   );
 });
+
+// SOL Buy Handlers
+async function handleSolBuyAmount(ctx) {
+  await ctx.answerCbQuery('🚧 SOL buying coming soon!');
+  await showSolBuy(ctx);
+}
+
+async function handleSolBuyExecute(ctx) {
+  await ctx.answerCbQuery('🚧 SOL buying coming soon!');
+  await showSolBuy(ctx);
+}
+
+// SOL Sell Handlers
+async function handleSolSellToken(ctx) {
+  await ctx.answerCbQuery('🚧 SOL selling coming soon!');
+  await showSolSell(ctx);
+}
+
+async function handleSolSellPercentage(ctx) {
+  await ctx.answerCbQuery('🚧 SOL selling coming soon!');
+  await showSolSell(ctx);
+}
+
+async function handleSolSellExecute(ctx) {
+  await ctx.answerCbQuery('🚧 SOL selling coming soon!');
+  await showSolSell(ctx);
+}
+
+// SOL Wallet Handlers
+async function handleSolWalletImport(ctx) {
+  await ctx.answerCbQuery('🚧 SOL wallet import coming soon!');
+  await showSolWallet(ctx);
+}
+
+async function handleSolWalletGenerate(ctx) {
+  await ctx.answerCbQuery('🚧 SOL wallet generation coming soon!');
+  await showSolWallet(ctx);
+}
+
+async function handleSolWalletView(ctx) {
+  await ctx.answerCbQuery('🚧 SOL wallet view coming soon!');
+  await showSolWallet(ctx);
+}
+// ====================================================================
+// BOT STARTUP
+// ====================================================================
+
+async function startBot() {
+  try {
+    // Create logs directory
+    await fs.mkdir(path.join(__dirname, 'logs'), { recursive: true });
+
+    // Create users database directory
+    await fs.mkdir(path.join(__dirname, 'db', 'users'), { recursive: true });
+
+    logger.info('Bot directories initialized');
+
+    // Launch bot
+    await bot.launch();
+
+    logger.info('🚀 Purity Sniper Bot is running!');
+    console.log('🚀 Purity Sniper Bot is running!');
+    console.log('✅ Ready for trading!');
+    console.log('🎯 SNIPING ENGINE ACTIVE!');
+    console.log('⚡ Complete snipe functionality implemented!');
+
+  } catch (error) {
+    logger.error('Failed to start bot:', error);
+    console.log('❌ Bot startup failed:', error.message);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+// Start the bot
+startBot();
