@@ -14,7 +14,7 @@
   "ethWallets": [
     "7d2aca93dc0fc54d28ef6f87740049be:39cba12e70a97fdd1be3b01be9091a2f9881eb108e62dc17415a346ca33b207c9cae89137880b23550bf066d9a38946564435194dcbf86303d083e5d60da9a22615d3ee2a64f1c17453e183779a3e83b"
   ],
-  "lastActive": 1752191672150,
+  "lastActive": 1752199149417,
   "solWallets": [],
   "snipeConfig": {
     "active": false,
@@ -259,6 +259,57 @@
       "status": "sent",
       "amount": "0.0000984078659392565",
       "timestamp": 1752191672149
+    },
+    {
+      "type": "buy",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "amount": "0.001",
+      "tradeAmount": "0.00099",
+      "feeAmount": "0.00001",
+      "txHash": "0x137ee2d168eb07edb8204ffcbe849e05765bf0b1c2ae5faea1c330f787feaf9a",
+      "feeHash": "0x9c3db3005aa4664e37c21135ac8f21f5abfab8bb2579617c43375e4982cd3b81",
+      "timestamp": 1752199028592,
+      "chain": "ethereum",
+      "feeCollectedFirst": true
+    },
+    {
+      "type": "sell",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "amount": "75383610.25224732",
+      "feeAmount": "0.000009840698863741",
+      "feeHash": {
+        "type": 2,
+        "chainId": 1,
+        "nonce": 70,
+        "maxPriorityFeePerGas": {
+          "type": "BigNumber",
+          "hex": "0x8aa7a8b4"
+        },
+        "maxFeePerGas": {
+          "type": "BigNumber",
+          "hex": "0x8aa7a8b4"
+        },
+        "gasPrice": null,
+        "gasLimit": {
+          "type": "BigNumber",
+          "hex": "0x0186a0"
+        },
+        "to": "0x93Ef5C0C3dFBdb0948eCBcd356B5945732CF3A49",
+        "value": {
+          "type": "BigNumber",
+          "hex": "0x08f3375c307d"
+        },
+        "data": "0x",
+        "accessList": [],
+        "hash": "0x36f01d23ad7567f2edd67c8e901ac4a9de15adb01abe5bbf2ac6050f60135c81",
+        "v": 0,
+        "r": "0xee419fd9ab1791b34752e8f553179bcec3a724762cbfb7bcd46519ccb488a66b",
+        "s": "0x142f01b082101e259c4fd594123f3cee68badf2db0b98b348a3b1ea359613213",
+        "from": "0x7FeC19473Ef5F6aCb53f532D60f5eaE6a7D409aa",
+        "confirmations": 0
+      },
+      "timestamp": 1752199149416,
+      "chain": "ethereum"
     }
   ],
   "mirrorTargets": [],

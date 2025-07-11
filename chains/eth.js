@@ -171,9 +171,12 @@ class EthChain {
         return null;
       }
 
-      // ✅ VALIDATION 2: Check minimum fee threshold - REMOVED to collect ALL fees
-      // No minimum threshold - we collect every fee, no matter how small
-      console.log(`💎 All fees collected - no minimum threshold`);
+      // ✅ VALIDATION 2: Check minimum fee threshold (0.0001 ETH)
+      const minFeeWei = ethers.utils.parseEther('0.000000000001');
+      if (feeAmountWei.lt(minFeeWei)) {
+        console.log(`⚠️ Fee too small: ${ethers.utils.formatEther(feeAmountWei)} ETH < 0.0001 ETH minimum`);
+        return null;
+      }
 
       console.log(`💎 Fee amount (final): ${ethers.utils.formatEther(feeAmountWei)} ETH`);
 
@@ -573,39 +576,30 @@ class EthChain {
 
         const provider = await this.getProvider();
 
+        // Build transaction for estimation
+        let transaction;
+        if (tokenIn === this.tokens.WETH || tokenIn === this.contracts.WETH) {
+          transaction = await this.buildETHToTokenSwap(tokenOut, amountIn, BigInt(0), recipient);
+        } else if (tokenOut === this.tokens.WETH || tokenOut === this.contracts.WETH) {
+          transaction = await this.buildTokenToETHSwap(tokenIn, amountIn, BigInt(0), recipient);
+        } else {
+          transaction = await this.buildTokenToTokenSwap(tokenIn, tokenOut, amountIn, BigInt(0), recipient);
+        }
+
         // Level 1: Try precise estimation
         try {
-          // Build transaction for estimation
-          let transaction;
-          if (tokenIn === this.tokens.WETH || tokenIn === this.contracts.WETH) {
-            transaction = await this.buildETHToTokenSwap(tokenOut, amountIn, BigInt(0), recipient);
-          } else if (tokenOut === this.tokens.WETH || tokenOut === this.contracts.WETH) {
-            transaction = await this.buildTokenToETHSwap(tokenIn, amountIn, BigInt(0), recipient);
-          } else {
-            transaction = await this.buildTokenToTokenSwap(tokenIn, tokenOut, amountIn, BigInt(0), recipient);
-          }
-
           const gasEstimate = await provider.estimateGas({
             ...transaction,
             from: recipient
           });
 
-          // Use minimal buffer (10% only)
-          const bufferedGas = gasEstimate.mul(110).div(100);
+          const bufferedGas = gasEstimate.mul(200).div(100); // 2x buffer
+          const MIN_GAS = ethers.BigNumber.from(400000);
+          const finalGas = bufferedGas.gt(MIN_GAS) ? bufferedGas : MIN_GAS;
 
-          // Set realistic min/max gas limits
-          const MIN_GAS = ethers.BigNumber.from(21000);  // ETH transfer minimum
-          const MAX_GAS = ethers.BigNumber.from(180000); // Reasonable swap maximum
+          const gasPrice = (await provider.getGasPrice()).mul(120).div(100); // +20%
 
-          let finalGas = bufferedGas;
-          if (finalGas.lt(MIN_GAS)) finalGas = MIN_GAS;
-          if (finalGas.gt(MAX_GAS)) finalGas = MAX_GAS;
-
-          const gasPrice = await provider.getGasPrice();
-
-          console.log(`✅ Gas estimate: ${gasEstimate.toString()}`);
-          console.log(`✅ Final gas limit: ${finalGas.toString()}`);
-          console.log(`✅ Gas price: ${ethers.utils.formatUnits(gasPrice, 'gwei')} gwei`);
+          console.log(`✅ Precise gas: ${gasEstimate.toString()} -> ${finalGas.toString()}`);
 
           return {
             gasLimit: finalGas,
@@ -617,9 +611,9 @@ class EthChain {
         } catch (estimateError) {
           console.log(`⚠️ Precise estimation failed: ${estimateError.message}`);
 
-          // Level 2: Conservative fallback with reasonable limits
-          const gasPrice = await provider.getGasPrice();
-          const conservativeGas = ethers.BigNumber.from(100000); // More reasonable
+          // Level 2: Conservative fallback
+          const gasPrice = (await provider.getGasPrice()).mul(130).div(100); // +30%
+          const conservativeGas = ethers.BigNumber.from(600000);
 
           console.log(`🛡️ Using conservative gas: ${conservativeGas.toString()}`);
 
@@ -637,8 +631,8 @@ class EthChain {
         // Level 3: Emergency fallback
         try {
           const provider = await this.getProvider();
-          const gasPrice = await provider.getGasPrice();
-          const emergencyGas = ethers.BigNumber.from(150000);     // Emergency only
+          const gasPrice = (await provider.getGasPrice()).mul(150).div(100); // +50%
+          const emergencyGas = ethers.BigNumber.from(800000);
 
           console.log(`🚨 Emergency gas: ${emergencyGas.toString()}`);
 
@@ -804,7 +798,7 @@ class EthChain {
     // 🚀 ENHANCED TOKEN SWAP EXECUTION (UNCHANGED - WORKING)
     // ====================================================================
 
-    async executeTokenSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3, options = {}) {
+    async executeTokenSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3) {
       try {
         console.log(`🚀 Executing swap: ${amountIn.toString()} ${tokenIn} -> ${tokenOut}`);
 
@@ -853,35 +847,6 @@ class EthChain {
 
       } catch (error) {
         console.log(`❌ Swap failed: ${error.message}`);
-        throw error;
-      }
-    }
-
-    // ====================================================================
-    // 🚀 ENHANCED TOKEN SWAP EXECUTION WITH APPROVAL - NEW FUNCTION
-    // This function handles token approval before executing the swap
-    // ====================================================================
-    async executeTokenSwapWithApproval(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3, options = {}) {
-      try {
-        console.log(`🚀 Executing Token Swap With Approval: ${amountIn.toString()} ${tokenIn} -> ${tokenOut}`);
-
-        const provider = await this.getProvider();
-        const wallet = new ethers.Wallet(privateKey, provider);
-
-        // Step 1: Approve token (if needed)
-        if (tokenIn !== this.tokens.WETH && tokenIn !== this.contracts.WETH) {
-          console.log(`🔑 Approving token ${tokenIn} for swap...`);
-          await this.smartApproveToken(tokenIn, this.contracts.UNISWAP_V2_ROUTER, amountIn, privateKey);
-        }
-
-        // Step 2: Execute the token swap
-        console.log(`🔄 Executing token swap after approval...`);
-        const swapResult = await this.executeTokenSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent, options);
-
-        return swapResult;
-
-      } catch (error) {
-        console.log(`❌ Token swap with approval failed: ${error.message}`);
         throw error;
       }
     }
@@ -1014,8 +979,8 @@ class EthChain {
     // ====================================================================
 
     async executeSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3) {
-      console.log('⚠️ Using legacy executeSwap function - mapping to executeTokenSwapWithApproval');
-      return await this.executeTokenSwapWithApproval(tokenIn, tokenOut, amountIn, privateKey, slippagePercent);
+      console.log('⚠️ Using legacy executeSwap function - mapping to executeTokenSwap');
+      return await this.executeTokenSwap(tokenIn, tokenOut, amountIn, privateKey, slippagePercent);
     }
 
     async executeTokenSale(tokenIn, tokenOut, amountIn, privateKey, slippagePercent = 3) {
