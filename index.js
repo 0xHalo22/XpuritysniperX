@@ -585,7 +585,18 @@ setInterval(() => {
   console.log(`🧹 Cleaned up snipe attempt tracking. ${snipeAttempts.size} users with recent attempts.`);
 }, 60 * 60 * 1000); // Run every hour
 
-console.log('🎯 COMPLETE SNIPING ENGINE LOADED: All three strategies ready!');</old_str>
+console.log('🎯 COMPLETE SNIPING ENGINE LOADED: All three strategies ready!');
+
+// Helper function to get human-readable strategy display names
+function getStrategyDisplayName(strategy) {
+  const strategyNames = {
+    'new_pairs': 'New Pairs (Degen Mode)',
+    'first_liquidity': 'First Liquidity Events', 
+    'contract_methods': 'Contract Methods'
+  };
+
+  return strategyNames[strategy] || 'Unknown Strategy';
+}</old_str>
 
 // Helper function to get human-readable strategy display names
 function getStrategyDisplayName(strategy) {
