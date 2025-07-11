@@ -4681,12 +4681,18 @@ setInterval(() => {
   logger.info(`Health check: ${activeCount} active snipe monitors, ${snipeAttemptCount} recent snipe users`);
 }, 30 * 60 * 1000); // Every 30 minutes
 
-// Revenue tracking enhancement for snipes
-const originalTrackRevenue = trackRevenue;
+// Helper function to track revenue - FIXED VERSION
 async function trackRevenue(feeAmount, type = 'trading_fee') {
   try {
-    // Call original function
-    await originalTrackRevenue(feeAmount);
+    // Log to revenue tracking system
+    const revenueData = {
+      amount: feeAmount,
+      currency: 'ETH',
+      timestamp: Date.now(),
+      type: type
+    };
+
+    logger.info('Revenue collected:', revenueData);
 
     // Enhanced logging for snipe revenues
     if (type === 'snipe_fee') {
@@ -4698,7 +4704,7 @@ async function trackRevenue(feeAmount, type = 'trading_fee') {
     // You could implement daily revenue tracking here
 
   } catch (error) {
-    console.log('Error in enhanced revenue tracking:', error.message);
+    console.log('Error in revenue tracking:', error.message);
   }
 }
 
