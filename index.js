@@ -1027,6 +1027,202 @@ ${slippage <= 10 ?
   }
 });
 
+// Gas configuration handler
+bot.action('snipe_config_gas', async (ctx) => {
+  const keyboard = [
+    [
+      { text: '50 gwei', callback_data: 'snipe_set_gas_50' },
+      { text: '100 gwei', callback_data: 'snipe_set_gas_100' }
+    ],
+    [
+      { text: '200 gwei', callback_data: 'snipe_set_gas_200' },
+      { text: '300 gwei', callback_data: 'snipe_set_gas_300' }
+    ],
+    [
+      { text: '500 gwei', callback_data: 'snipe_set_gas_500' },
+      { text: '1000 gwei', callback_data: 'snipe_set_gas_1000' }
+    ],
+    [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+  ];
+
+  await ctx.editMessageText(
+    `⛽ **MAX GAS PRICE CONFIGURATION**
+
+Set the maximum gas price for snipe attempts:
+
+**💡 Gas Price Guide:**
+• **50-100 gwei:** Normal network conditions
+• **200-300 gwei:** High priority (recommended for sniping)
+• **500+ gwei:** Emergency/ultra-fast execution
+• **1000+ gwei:** Extreme priority (very expensive)
+
+**⚠️ Important:**
+• Higher gas = faster execution but more expensive
+• Snipes that exceed max gas will be skipped
+• During high network activity, you may need higher gas
+• Gas price affects snipe success rate
+
+**Current network conditions will be checked before each snipe**
+
+Select your maximum gas price:`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// Gas price handlers
+bot.action(/^snipe_set_gas_(\d+)$/, async (ctx) => {
+  const gasPrice = parseInt(ctx.match[1]);
+  const userId = ctx.from.id.toString();
+
+  try {
+    await updateSnipeConfig(userId, { maxGasPrice: gasPrice });
+
+    await ctx.editMessageText(
+      `✅ **Max Gas Price Updated**
+
+**New Setting:** ${gasPrice} gwei
+
+${gasPrice <= 100 ? 
+        '💡 **Conservative:** Good for normal network conditions' : 
+        gasPrice <= 300 ? 
+        '⚡ **Aggressive:** Recommended for sniping' : 
+        '🔥 **Ultra-Fast:** Very expensive but highest priority'
+      }
+
+Your snipe attempts will not execute if network gas exceeds ${gasPrice} gwei.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⚙️ Other Settings', callback_data: 'eth_snipe' }],
+            [{ text: '🔙 Back to Gas Config', callback_data: 'snipe_config_gas' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    await ctx.answerCbQuery(`✅ Max gas set to ${gasPrice} gwei`);
+
+  } catch (error) {
+    console.log('Error setting gas price:', error);
+    await ctx.answerCbQuery('❌ Failed to update gas price');
+  }
+});
+
+// Snipe history handler
+bot.action('snipe_history', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const userData = await loadUserData(userId);
+    const transactions = userData.transactions || [];
+
+    // Filter snipe transactions
+    const snipeTransactions = transactions.filter(tx => tx.type === 'snipe').slice(-10);
+
+    if (snipeTransactions.length === 0) {
+      await ctx.editMessageText(
+        `📊 **SNIPE HISTORY**
+
+❌ No snipe attempts found yet.
+
+Once you start sniping, your transaction history will appear here.
+
+**What you'll see:**
+• Successful snipes with token info
+• Failed attempts and reasons
+• Gas costs and fees paid
+• Timestamps and transaction hashes
+
+Start sniping to build your history!`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔥 Start Sniping', callback_data: 'snipe_start' }],
+              [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+            ]
+          },
+          parse_mode: 'Markdown'
+        }
+      );
+      return;
+    }
+
+    // Build history text
+    let historyText = `📊 **SNIPE HISTORY**\n\n**Last ${snipeTransactions.length} Snipe Attempts:**\n\n`;
+
+    snipeTransactions.reverse().forEach((tx, index) => {
+      const date = new Date(tx.timestamp).toLocaleDateString();
+      const time = new Date(tx.timestamp).toLocaleTimeString();
+      const status = tx.failed ? '❌ FAILED' : '✅ SUCCESS';
+      const amount = parseFloat(tx.amount || 0).toFixed(4);
+
+      historyText += `**${index + 1}.** ${status}\n`;
+      historyText += `💰 Amount: ${amount} ETH\n`;
+
+      if (tx.tokenAddress) {
+        const tokenAddr = tx.tokenAddress.slice(0, 6) + '...' + tx.tokenAddress.slice(-4);
+        historyText += `🎯 Token: ${tokenAddr}\n`;
+      }
+
+      if (tx.snipeStrategy) {
+        historyText += `📋 Strategy: ${tx.snipeStrategy}\n`;
+      }
+
+      if (tx.txHash) {
+        historyText += `🔗 [View](https://etherscan.io/tx/${tx.txHash})\n`;
+      } else if (tx.error) {
+        historyText += `❌ Error: ${tx.error}\n`;
+      }
+
+      historyText += `📅 ${date} ${time}\n\n`;
+    });
+
+    // Calculate statistics
+    const totalAttempts = snipeTransactions.length;
+    const successful = snipeTransactions.filter(tx => !tx.failed && tx.txHash).length;
+    const successRate = totalAttempts > 0 ? Math.round((successful / totalAttempts) * 100) : 0;
+    const totalSpent = snipeTransactions.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+
+    historyText += `📈 **STATISTICS:**\n`;
+    historyText += `• Total Attempts: ${totalAttempts}\n`;
+    historyText += `• Successful: ${successful}\n`;
+    historyText += `• Success Rate: ${successRate}%\n`;
+    historyText += `• Total Spent: ${totalSpent.toFixed(4)} ETH`;
+
+    await ctx.editMessageText(historyText, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Refresh', callback_data: 'snipe_history' }],
+          [{ text: '🗑️ Clear History', callback_data: 'clear_snipe_history' }],
+          [{ text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    });
+
+  } catch (error) {
+    console.log('Error loading snipe history:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading snipe history**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Configuration', callback_data: 'eth_snipe' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
 // ====================================================================
 // ETH WALLET MANAGEMENT
 // ====================================================================
