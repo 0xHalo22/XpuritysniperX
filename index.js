@@ -3054,16 +3054,19 @@ Send your SOL private key now:`
   }, 5 * 60 * 1000);
 });
 
-// SOL wallet import handler
+// SOL wallet import handler - FIXED VERSION
 async function handleSolWalletImport(ctx, userId) {
   const privateKey = ctx.message.text.trim();
 
   try {
     userStates.delete(userId);
 
-    // Import and encrypt the SOL wallet
+    // ✅ FIX: Use walletManager.importWallet() like ETH, not direct encryption
+    const encryptedKey = await walletManager.importWallet(privateKey, userId);
+
+    // Create wallet to get address (for validation)
     const wallet = solChain.createWalletFromPrivateKey(privateKey);
-    const encryptedKey = await walletManager.encryptPrivateKey(privateKey, userId);
+    const address = wallet.publicKey.toString();
 
     // Update user data
     const userData = await loadUserData(userId);
@@ -3072,8 +3075,6 @@ async function handleSolWalletImport(ctx, userId) {
     }
     userData.solWallets.push(encryptedKey);
     await saveUserData(userId, userData);
-
-    const address = wallet.publicKey.toString();
 
     await ctx.reply(
       `✅ **SOL Wallet Imported Successfully!**
@@ -3097,11 +3098,18 @@ Address: \`${address}\`
     userStates.delete(userId);
     logger.error(`SOL wallet import error for user ${userId}:`, error);
 
-    if (error.message.includes('Invalid')) {
-      await ctx.reply('❌ Invalid SOL private key format. Please check and try again.');
+    // Better error handling
+    let errorMessage = 'Invalid SOL private key format. Please check and try again.';
+    
+    if (error.message.includes('Invalid private key')) {
+      errorMessage = 'Invalid private key format. SOL private keys should be base58 strings or byte arrays.';
+    } else if (error.message.includes('Invalid')) {
+      errorMessage = 'Invalid SOL private key. Please check the format and try again.';
     } else {
-      await ctx.reply(`❌ Error importing wallet: ${error.message}`);
+      errorMessage = `Error importing wallet: ${error.message}`;
     }
+
+    await ctx.reply(`❌ ${errorMessage}`);
   }
 }
 
