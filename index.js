@@ -482,6 +482,176 @@ Choose your action:`,
 }
 
 // ====================================================================
+// SOL CRASH PREVENTION HANDLERS - TEMPORARY PLACEHOLDERS
+// ====================================================================
+
+// SOL Wallet handler
+bot.action('sol_wallet', async (ctx) => {
+  await ctx.editMessageText(
+    `🚧 **SOL WALLET SYSTEM**
+
+🔄 **Coming Soon!**
+
+The Solana wallet system is currently under development. All SOL features will be available soon.
+
+**What's Coming:**
+• SOL wallet import and management
+• Multi-wallet SOL support  
+• Secure key encryption
+• Balance monitoring
+
+**Current Status:** ETH trading is fully operational!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💰 Use ETH Trading', callback_data: 'chain_eth' }],
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }],
+          [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// SOL Buy handler
+bot.action('sol_buy', async (ctx) => {
+  await ctx.editMessageText(
+    `🚧 **SOL BUY TOKEN**
+
+🔄 **Coming Soon!**
+
+SOL token buying is currently under development with Jupiter integration.
+
+**What's Coming:**
+• Jupiter DEX integration for best prices
+• SOL token selection and amounts
+• Automatic slippage optimization
+• 1% fee structure (same as ETH)
+
+**Alternative:** Use our fully functional ETH trading system!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💰 Buy ETH Tokens', callback_data: 'eth_buy' }],
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }],
+          [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// SOL Sell handler
+bot.action('sol_sell', async (ctx) => {
+  await ctx.editMessageText(
+    `🚧 **SOL SELL TOKEN**
+
+🔄 **Coming Soon!**
+
+SOL token selling with automatic portfolio detection is in development.
+
+**What's Coming:**
+• Automatic SOL token holdings detection
+• Percentage-based selling (25%, 50%, 75%, 100%)
+• Jupiter routing for optimal prices
+• Fee collection in SOL
+
+**Alternative:** Use our proven ETH selling system!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📈 Sell ETH Tokens', callback_data: 'eth_sell' }],
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }],
+          [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// SOL Snipe handler
+bot.action('sol_snipe', async (ctx) => {
+  await ctx.editMessageText(
+    `🚧 **SOL SNIPE TOKEN**
+
+🔄 **Coming Soon!**
+
+SOL sniping with Raydium and Jupiter monitoring is in development.
+
+**What's Coming:**
+• Real-time Raydium pool monitoring
+• New SPL token detection
+• Lightning-fast SOL sniping
+• Advanced filter strategies
+
+**Available Now:** ETH sniping is fully operational!`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🎯 Use ETH Sniping', callback_data: 'eth_snipe' }],
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }],
+          [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// SOL Mirror handler
+bot.action('sol_mirror', async (ctx) => {
+  await ctx.editMessageText(
+    `🚧 **SOL MIRROR TRADING**
+
+🔄 **Coming Soon!**
+
+SOL wallet mirroring with Jupiter integration is in development.
+
+**What's Coming:**
+• Monitor any SOL wallet for trades
+• Automatic copy trading on Solana
+• Customizable copy percentages
+• Real-time trade replication
+
+**Note:** This is an advanced feature planned for Phase 3.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💰 Use ETH Trading', callback_data: 'chain_eth' }],
+          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }],
+          [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+// Catch-all SOL handler for any missed SOL actions
+bot.action(/^sol_.*$/, async (ctx) => {
+  await ctx.editMessageText(
+    `🚧 **SOL FEATURE UNAVAILABLE**
+
+This SOL feature is currently under development.
+
+**Status:** ETH trading system is fully operational and generating revenue!
+
+**Coming Soon:** Complete SOL trading suite with Jupiter integration.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💰 Use ETH Trading', callback_data: 'chain_eth' }],
+          [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+        ]
+      }
+    }
+  );
+});
+
+// ====================================================================
 // UTILITY FUNCTIONS
 // ====================================================================
 
@@ -509,20 +679,25 @@ async function recordTransaction(userId, transactionData) {
 }
 
 // Helper function to track revenue
-async function trackRevenue(feeAmount) {
+async function trackRevenue(feeAmount, type = 'trading_fee') {
   try {
     // Log to revenue tracking system
     const revenueData = {
       amount: feeAmount,
-      currency: 'ETH',
+      currency: type.includes('sol') ? 'SOL' : 'ETH',
       timestamp: Date.now(),
-      type: 'trading_fee'
+      type: type
     };
 
     logger.info('Revenue collected:', revenueData);
 
+    // Enhanced logging for snipe revenues
+    if (type === 'snipe_fee') {
+      console.log(`💰 SNIPE REVENUE: ${feeAmount} ETH collected from auto-snipe`);
+    }
+
   } catch (error) {
-    console.log('Error tracking revenue:', error);
+    console.log('Error in revenue tracking:', error.message);
   }
 }
 
