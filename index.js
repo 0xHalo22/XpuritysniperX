@@ -3274,31 +3274,37 @@ bot.action(/^sol_buy_amount_(.+)_(.+)$/, async (ctx) => {
 
 // Handle SOL custom amount
 bot.action(/^sol_buy_custom_(.+)$/, async (ctx) => {
-  const tokenAddress = ctx.match[1];
+  const shortId = ctx.match[1];
   const userId = ctx.from.id.toString();
 
-  await ctx.editMessageText(
-    `🟣 **CUSTOM AMOUNT**
+  try {
+    const tokenAddress = getFullTokenAddress(shortId);
+
+    await ctx.editMessageText(
+      `🟣 **CUSTOM AMOUNT**
 
 Enter the SOL amount you want to spend:
 
 Example: 0.25
 
 Send your custom amount now:`,
-    {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 Back to Amount Selection', callback_data: `sol_buy_retry_${tokenAddress}` }
-        ]]
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Amount Selection', callback_data: `sol_buy_retry_${shortId}` }
+          ]]
+        }
       }
-    }
-  );
+    );
 
-  userStates.set(userId, {
-    action: 'sol_custom_amount',
-    tokenAddress: tokenAddress,
-    timestamp: Date.now()
-  });
+    userStates.set(userId, {
+      action: 'sol_custom_amount',
+      tokenAddress: tokenAddress,
+      timestamp: Date.now()
+    });
+  } catch (error) {
+    await ctx.editMessageText('❌ Token not found. Please try again.');
+  }
 });
 
 // SOL custom amount handler
@@ -3367,6 +3373,8 @@ async function showSolBuyReview(ctx, tokenAddress, amount) {
     const totalCost = amountFloat + estimatedTxCost;
 
     if (totalCost > balanceFloat) {
+      // Use token mapping for retry button
+      const shortId = storeTokenMapping(tokenAddress);
       await ctx.editMessageText(
         `❌ **Insufficient Balance**
 
@@ -3378,7 +3386,7 @@ Please reduce the amount or add more SOL to your wallet.`,
         {
           reply_markup: {
             inline_keyboard: [
-              [{ text: '🔄 Try Different Amount', callback_data: `sol_buy_retry_${tokenAddress}` }],
+              [{ text: '🔄 Try Different Amount', callback_data: `sol_buy_retry_${shortId}` }],
               [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
             ]
           }
@@ -3390,9 +3398,12 @@ Please reduce the amount or add more SOL to your wallet.`,
     // Get swap quote from Jupiter
     const quote = await solChain.getSwapQuote('sol', tokenAddress, netTradeAmount);
 
+    // Store token mapping for callback data
+    const shortId = storeTokenMapping(tokenAddress);
+
     const keyboard = [
-      [{ text: '✅ Confirm Purchase', callback_data: `sol_buy_execute_${tokenAddress}_${amount}` }],
-      [{ text: '🔄 Change Amount', callback_data: `sol_buy_retry_${tokenAddress}` }],
+      [{ text: '✅ Confirm Purchase', callback_data: `sol_buy_execute_${shortId}_${amount}` }],
+      [{ text: '🔄 Change Amount', callback_data: `sol_buy_retry_${shortId}` }],
       [{ text: '🔙 Cancel', callback_data: 'chain_sol' }]
     ];
 
@@ -3442,12 +3453,14 @@ Please try again or contact support.`,
 // Execute SOL buy transaction
 bot.action(/^sol_buy_execute_(.+)_(.+)$/, async (ctx) => {
   const match = ctx.match;
-  const tokenAddress = match[1];
+  const shortId = match[1];
   const amount = match[2];
   const userId = ctx.from.id.toString();
 
   try {
-    // Check rate limit again
+    const tokenAddress = getFullTokenAddress(shortId);
+
+  // Check rate limit again
     await checkRateLimit(userId, 'transactions');
 
     await ctx.editMessageText('⏳ **Starting SOL transaction...**\n\nStep 1/2: Executing swap via Jupiter...');
@@ -3673,9 +3686,10 @@ Please try again or contact support.`,
 
 // SOL buy retry handler
 bot.action(/^sol_buy_retry_(.+)$/, async (ctx) => {
-  const tokenAddress = ctx.match[1];
+  const shortId = ctx.match[1];
 
   try {
+    const tokenAddress = getFullTokenAddress(shortId);
     const tokenInfo = await solChain.getTokenInfo(tokenAddress);
     await showSolBuyAmount(ctx, tokenAddress, tokenInfo);
   } catch (error) {
