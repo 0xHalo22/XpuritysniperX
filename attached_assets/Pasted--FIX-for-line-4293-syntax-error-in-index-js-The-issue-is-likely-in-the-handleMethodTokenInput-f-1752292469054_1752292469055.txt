@@ -1,0 +1,204 @@
+// FIX for line 4293 syntax error in index.js
+// The issue is likely in the handleMethodTokenInput function where there's an incomplete template literal
+
+// FIND this problematic section in your index.js (around line 4293):
+// Replace any instances that look like this:
+
+// BROKEN VERSION (causing syntax error):
+/*
+throw new Error('Invalid method signature format.
+${error.message}
+*/
+
+// FIXED VERSION:
+throw new Error(`Invalid method signature format: ${error.message}`);
+
+// OR if it's in an error message response:
+
+// BROKEN VERSION:
+/*
+await ctx.reply(
+  `❌ **Error:** 
+${error.message}
+*/
+
+// FIXED VERSION:
+await ctx.reply(
+  `❌ **Error:** ${error.message}
+
+Please check your input and try again.`,
+  {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔄 Try Again', callback_data: 'add_method_token' }],
+        [{ text: '🔙 Back to Strategy', callback_data: 'snipe_set_strategy_contract_methods' }]
+      ]
+    },
+    parse_mode: 'Markdown'
+  }
+);
+
+// ====================================================================
+// COMPLETE FIXED FUNCTION: handleMethodTokenInput
+// ====================================================================
+
+async function handleMethodTokenInput(ctx, userId) {
+  const input = ctx.message.text.trim();
+  const parts = input.split(/\s+/);
+
+  if (parts.length < 2) {
+    userStates.delete(userId);
+    await ctx.reply(
+      `❌ **Invalid format!**
+
+You need to provide both token address AND method signature.
+
+**Format:** \`TokenAddress MethodSignature [TokenName]\`
+**Example:** \`0x123...abc 0x095ea7b3 MEME Token\``,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'add_method_token' }],
+            [{ text: '📖 Common Methods', callback_data: 'show_common_methods' }],
+            [{ text: '🔙 Back to Strategy', callback_data: 'snipe_set_strategy_contract_methods' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+    return;
+  }
+
+  const tokenAddress = parts[0];
+  const methodSignature = parts[1];
+  const tokenLabel = parts.slice(2).join(' ') || null;
+
+  try {
+    userStates.delete(userId);
+
+    // Validate address format
+    if (!tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      throw new Error('Invalid Ethereum address format. Must be 42 characters starting with 0x');
+    }
+
+    // Validate method signature format
+    if (!methodSignature.match(/^0x[a-fA-F0-9]{8}$/)) {
+      throw new Error('Invalid method signature format. Must be 10 characters starting with 0x followed by 8 hex characters');
+    }
+
+    // Get user data and add to strategy
+    const userData = await loadUserData(userId);
+    
+    if (!userData.snipeStrategy) {
+      userData.snipeStrategy = {};
+    }
+    
+    if (!userData.snipeStrategy.methodTokens) {
+      userData.snipeStrategy.methodTokens = [];
+    }
+
+    // Create method token entry
+    const methodToken = {
+      tokenAddress: tokenAddress,
+      methodSignature: methodSignature,
+      label: tokenLabel,
+      addedAt: Date.now()
+    };
+
+    // Check if already exists
+    const exists = userData.snipeStrategy.methodTokens.find(
+      mt => mt.tokenAddress.toLowerCase() === tokenAddress.toLowerCase() && 
+            mt.methodSignature.toLowerCase() === methodSignature.toLowerCase()
+    );
+
+    if (exists) {
+      await ctx.reply(
+        `⚠️ **Already Added**
+
+This token and method combination is already in your strategy.
+
+**Token:** \`${tokenAddress}\`
+**Method:** \`${methodSignature}\``,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔄 Add Different Token', callback_data: 'add_method_token' }],
+              [{ text: '📊 View Strategy', callback_data: 'snipe_set_strategy_contract_methods' }]
+            ]
+          },
+          parse_mode: 'Markdown'
+        }
+      );
+      return;
+    }
+
+    // Add to strategy
+    userData.snipeStrategy.methodTokens.push(methodToken);
+    await saveUserData(userId, userData);
+
+    // Success message
+    await ctx.reply(
+      `✅ **Method Token Added Successfully!**
+
+**Token:** \`${tokenAddress}\`
+**Method:** \`${methodSignature}\`
+${tokenLabel ? `**Label:** ${tokenLabel}` : ''}
+
+The bot will now monitor for transactions calling this method on this token contract.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '➕ Add Another', callback_data: 'add_method_token' }],
+            [{ text: '📊 View All Targets', callback_data: 'snipe_set_strategy_contract_methods' }],
+            [{ text: '🔙 Back to Strategy', callback_data: 'snipe_set_strategy_contract_methods' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please check your input and try again.
+
+**Valid format:** \`TokenAddress MethodSignature [TokenName]\`
+**Example:** \`0x123...abc 0x095ea7b3 MEME Token\``,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'add_method_token' }],
+            [{ text: '📖 Common Methods', callback_data: 'show_common_methods' }],
+            [{ text: '🔙 Back to Strategy', callback_data: 'snipe_set_strategy_contract_methods' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+}
+
+// ====================================================================
+// HOW TO FIX THE ERROR:
+// ====================================================================
+
+/*
+1. Open your index.js file
+2. Go to line 4293 (or search for the handleMethodTokenInput function)
+3. Look for any template literals that have ${error.message} 
+4. Make sure they are properly formatted with backticks and complete strings
+5. Replace any broken template literals with the fixed versions above
+
+The most common issue is a template literal that looks like:
+❌ BROKEN:
+throw new Error('Invalid method signature format.
+${error.message}
+
+✅ FIXED:
+throw new Error(`Invalid method signature format: ${error.message}`);
+
+The issue is mixing single quotes with template literal syntax.
+*/
