@@ -3076,19 +3076,48 @@ Send your SOL private key now:`
   }, 5 * 60 * 1000);
 });
 
-// SOL wallet import handler - FIXED VERSION
+// SOL wallet import handler - FIXED VERSION FOR PHANTOM FORMAT
 async function handleSolWalletImport(ctx, userId) {
-  const privateKey = ctx.message.text.trim();
+  const rawInput = ctx.message.text.trim();
 
   try {
     userStates.delete(userId);
 
-    // ✅ FIX: Use walletManager.importWallet() like ETH, not direct encryption
-    const encryptedKey = await walletManager.importWallet(privateKey, userId);
+    console.log(`🔍 SOL import input: ${rawInput.substring(0, 50)}...`);
 
-    // Create wallet to get address (for validation)
-    const wallet = solChain.createWalletFromPrivateKey(privateKey);
+    // ✅ DETECT AND CONVERT PHANTOM BYTE ARRAY FORMAT
+    let processedPrivateKey = rawInput;
+
+    // Check if input looks like a byte array [1,2,3,...]
+    if (rawInput.startsWith('[') && rawInput.endsWith(']')) {
+      console.log('📱 Detected Phantom byte array format');
+      
+      try {
+        // Parse the array string into actual numbers
+        const byteArray = JSON.parse(rawInput);
+        
+        if (Array.isArray(byteArray) && byteArray.length === 64) {
+          // Convert byte array to Uint8Array then to base58
+          const uint8Array = new Uint8Array(byteArray);
+          const bs58 = require('bs58');
+          processedPrivateKey = bs58.encode(uint8Array);
+          console.log(`✅ Converted Phantom format to base58: ${processedPrivateKey.substring(0, 10)}...`);
+        } else {
+          throw new Error(`Invalid byte array length: ${byteArray.length} (expected 64)`);
+        }
+      } catch (parseError) {
+        throw new Error('Invalid byte array format. Please check the format and try again.');
+      }
+    }
+
+    // ✅ CREATE AND VALIDATE SOL WALLET DIRECTLY (not using ETH validation)
+    const wallet = solChain.createWalletFromPrivateKey(processedPrivateKey);
     const address = wallet.publicKey.toString();
+    
+    console.log(`✅ SOL wallet created successfully: ${address}`);
+
+    // ✅ ENCRYPT USING SIMPLE METHOD (bypass ETH validation)
+    const encryptedKey = await walletManager.encryptPrivateKey(processedPrivateKey, userId);
 
     // Update user data
     const userData = await loadUserData(userId);
@@ -3103,7 +3132,9 @@ async function handleSolWalletImport(ctx, userId) {
 
 Address: \`${address}\`
 
-🔐 Your private key has been encrypted and stored securely.`,
+🔐 Your private key has been encrypted and stored securely.
+
+${rawInput.startsWith('[') ? '📱 **Phantom format detected and converted automatically!**' : ''}`,
       {
         reply_markup: {
           inline_keyboard: [[
@@ -3120,18 +3151,28 @@ Address: \`${address}\`
     userStates.delete(userId);
     logger.error(`SOL wallet import error for user ${userId}:`, error);
 
-    // Better error handling
-    let errorMessage = 'Invalid SOL private key format. Please check and try again.';
+    // Enhanced error handling with format detection
+    let errorMessage = 'Invalid SOL private key format.';
     
-    if (error.message.includes('Invalid private key')) {
-      errorMessage = 'Invalid private key format. SOL private keys should be base58 strings or byte arrays.';
-    } else if (error.message.includes('Invalid')) {
-      errorMessage = 'Invalid SOL private key. Please check the format and try again.';
+    if (error.message.includes('Invalid Solana private key')) {
+      errorMessage = 'Invalid Solana private key. Please check the format from your wallet.';
+    } else if (error.message.includes('byte array')) {
+      errorMessage = 'Invalid byte array format. Make sure you copied the complete array from Phantom.';
+    } else if (rawInput.startsWith('[')) {
+      errorMessage = 'Invalid Phantom byte array. Please copy the complete private key from Phantom wallet.';
     } else {
-      errorMessage = `Error importing wallet: ${error.message}`;
+      errorMessage = `Import failed: ${error.message}`;
     }
 
-    await ctx.reply(`❌ ${errorMessage}`);
+    await ctx.reply(
+      `❌ ${errorMessage}
+
+**Supported formats:**
+• Base58 string (e.g., 5Kb8kLf9CcnVuN...)
+• Phantom byte array (e.g., [205,104,187...])
+
+Please try again with the correct format.`
+    );
   }
 }
 
