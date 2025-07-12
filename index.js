@@ -9,7 +9,17 @@ const path = require('path');
 const winston = require('winston');
 const ethers = require('ethers');
 
+// Import Mirror Trading System
+const MirrorTradingSystem = require('./utils/mirrorTrading');
+
+
+
 // Import our custom modules
+
+// Initialize Mirror Trading System
+const mirrorTradingSystem = new MirrorTradingSystem();
+
+
 const WalletManager = require('./wallets/manager');
 const EthChain = require('./chains/eth');
 const SolChain = require('./chains/sol');
@@ -742,33 +752,58 @@ SOL sniping with Raydium and Jupiter monitoring is in development.
   );
 });
 
-// SOL Mirror handler
+// SOL Mirror handler - CONNECTED TO ACTUAL SYSTEM
 bot.action('sol_mirror', async (ctx) => {
-  await ctx.editMessageText(
-    `🚧 **SOL MIRROR TRADING**
+  const userId = ctx.from.id.toString();
+  
+  try {
+    const userData = await loadUserData(userId);
 
-🔄 **Coming Soon!**
+    // Check if user has SOL wallet
+    if (!userData.solWallets || userData.solWallets.length === 0) {
+      await ctx.editMessageText(
+        `🪞 **SOL MIRROR TRADING**
 
-SOL wallet mirroring with Jupiter integration is in development.
-
-**What's Coming:**
-• Monitor any SOL wallet for trades
-• Automatic copy trading on Solana
-• Customizable copy percentages
-• Real-time trade replication
-
-**Note:** This is an advanced feature planned for Phase 3.`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '💰 Use ETH Trading', callback_data: 'chain_eth' }],
-          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }],
-          [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
-        ]
-      },
-      parse_mode: 'Markdown'
+❌ No SOL wallet found. Import a wallet first to start mirror trading.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '➕ Import SOL Wallet', callback_data: 'import_sol_wallet' }],
+              [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+            ]
+          }
+        }
+      );
+      return;
     }
-  );
+
+    // Check if user already has active mirror
+    const mirrorStats = await mirrorTradingSystem.getMirrorStats(userId);
+    const activeMirror = mirrorTradingSystem.getMirrorConfig(userId);
+
+    if (activeMirror && activeMirror.active) {
+      await showActiveSolMirror(ctx, activeMirror, mirrorStats);
+    } else {
+      await showSolMirrorSetup(ctx, mirrorStats);
+    }
+
+  } catch (error) {
+    console.log('Error in sol_mirror handler:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading mirror system**
+
+${error.message}
+
+Please try again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+          ]]
+        }
+      }
+    );
+  }
 });
 
 // Removed catch-all SOL handler - SOL functionality is now fully implemented
@@ -2962,6 +2997,454 @@ Please reduce the amount or add more ETH to your wallet.`,
     }
 
     // Get token quote
+
+
+// ====================================================================
+// SOL MIRROR TRADING UI IMPLEMENTATION
+// ====================================================================
+
+// Show SOL mirror setup screen
+async function showSolMirrorSetup(ctx, mirrorStats) {
+  const keyboard = [
+    [{ text: '🎯 Start New Mirror', callback_data: 'sol_mirror_new' }],
+    [{ text: '📊 Mirror History', callback_data: 'sol_mirror_history' }],
+    [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+  ];
+
+  await ctx.editMessageText(
+    `🪞 **SOL MIRROR TRADING**
+
+**Mirror any SOL wallet's trades automatically!**
+
+**📊 Your Mirror Stats:**
+• Total Mirrors: ${mirrorStats.totalMirrors}
+• Success Rate: ${mirrorStats.successRate}%
+• Total Volume: ${mirrorStats.totalVolume.toFixed(4)} SOL
+
+**How it works:**
+• Enter target wallet address
+• Set copy percentage (10-100%)
+• Bot monitors via Helius WebSocket
+• Auto-copies trades using Jupiter
+
+**Ready to start mirror trading?**`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+}
+
+// Show active SOL mirror
+async function showActiveSolMirror(ctx, activeMirror, mirrorStats) {
+  const targetWallet = activeMirror.targetWallet;
+  const displayWallet = `${targetWallet.slice(0, 6)}...${targetWallet.slice(-4)}`;
+  const uptime = Math.round((Date.now() - activeMirror.startedAt) / 1000 / 60); // minutes
+
+  const keyboard = [
+    [{ text: '⏸️ Stop Mirror', callback_data: 'sol_mirror_stop' }],
+    [{ text: '⚙️ Adjust Settings', callback_data: 'sol_mirror_settings' }],
+    [{ text: '📊 View History', callback_data: 'sol_mirror_history' }],
+    [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+  ];
+
+  await ctx.editMessageText(
+    `🪞 **ACTIVE SOL MIRROR**
+
+🟢 **Currently mirroring:** ${displayWallet}
+⚙️ **Copy Percentage:** ${activeMirror.copyPercentage}%
+💰 **Max Amount:** ${activeMirror.maxAmount} SOL
+⏱️ **Uptime:** ${uptime} minutes
+
+**📊 Session Stats:**
+• Successful Mirrors: ${mirrorStats.successfulMirrors}
+• Success Rate: ${mirrorStats.successRate}%
+• Total Volume: ${mirrorStats.totalVolume.toFixed(4)} SOL
+
+**Status:** 🔍 Monitoring for trades...`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+}
+
+// Start new SOL mirror
+bot.action('sol_mirror_new', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  await ctx.editMessageText(
+    `🎯 **NEW SOL MIRROR**
+
+Enter the Solana wallet address you want to mirror:
+
+**Example:** 
+\`DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK\`
+
+**Requirements:**
+• Valid Solana wallet address
+• Active trading wallet (not empty)
+• Public transactions visible
+
+Send the wallet address now:`,
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to Mirror Setup', callback_data: 'sol_mirror' }
+        ]]
+      },
+      parse_mode: 'Markdown'
+    }
+  );
+
+  userStates.set(userId, {
+    action: 'sol_mirror_target_wallet',
+    timestamp: Date.now()
+  });
+});
+
+// Handle SOL mirror target wallet input
+async function handleSolMirrorTargetWallet(ctx, userId) {
+  const targetWallet = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    // Validate SOL wallet address
+    if (!solChain.isValidAddress(targetWallet)) {
+      throw new Error('Invalid Solana wallet address format');
+    }
+
+    // Check if wallet has activity (optional validation)
+    try {
+      const balance = await solChain.getBalance(targetWallet);
+      console.log(`Target wallet balance: ${balance} SOL`);
+    } catch (balanceError) {
+      console.log(`Warning: Could not check target wallet balance: ${balanceError.message}`);
+    }
+
+    // Show copy percentage selection
+    await showSolMirrorPercentageSelection(ctx, targetWallet);
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please send a valid Solana wallet address.
+
+**Format:** \`DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK\``,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'sol_mirror_new' }],
+            [{ text: '🔙 Back to Mirror Setup', callback_data: 'sol_mirror' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+}
+
+// Show copy percentage selection
+async function showSolMirrorPercentageSelection(ctx, targetWallet) {
+  const shortWallet = `${targetWallet.slice(0, 6)}...${targetWallet.slice(-4)}`;
+
+  const keyboard = [
+    [
+      { text: '10%', callback_data: `sol_mirror_pct_${targetWallet}_10` },
+      { text: '25%', callback_data: `sol_mirror_pct_${targetWallet}_25` }
+    ],
+    [
+      { text: '50%', callback_data: `sol_mirror_pct_${targetWallet}_50` },
+      { text: '100%', callback_data: `sol_mirror_pct_${targetWallet}_100` }
+    ],
+    [{ text: '🔢 Custom %', callback_data: `sol_mirror_custom_${targetWallet}` }],
+    [{ text: '🔙 Different Wallet', callback_data: 'sol_mirror_new' }]
+  ];
+
+  await ctx.reply(
+    `⚙️ **MIRROR CONFIGURATION**
+
+**Target Wallet:** ${shortWallet}
+
+**Choose Copy Percentage:**
+
+• **10%** - Conservative copying
+• **25%** - Moderate risk/reward
+• **50%** - Balanced approach  
+• **100%** - Full mirror (same amounts)
+
+**What percentage of their trades should be copied?**`,
+    {
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'Markdown'
+    }
+  );
+}
+
+// Handle percentage selection
+bot.action(/^sol_mirror_pct_(.+)_(\d+)$/, async (ctx) => {
+  const targetWallet = ctx.match[1];
+  const percentage = parseInt(ctx.match[2]);
+
+  await configureSolMirror(ctx, targetWallet, percentage);
+});
+
+// Handle custom percentage
+bot.action(/^sol_mirror_custom_(.+)$/, async (ctx) => {
+  const targetWallet = ctx.match[1];
+  const userId = ctx.from.id.toString();
+
+  await ctx.editMessageText(
+    `🔢 **CUSTOM COPY PERCENTAGE**
+
+Enter your custom copy percentage (1-100):
+
+**Examples:**
+• 15 (for 15%)
+• 33 (for 33%)
+• 75 (for 75%)
+
+Send your percentage now:`,
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to Percentages', callback_data: 'sol_mirror_new' }
+        ]]
+      }
+    }
+  );
+
+  userStates.set(userId, {
+    action: 'sol_mirror_custom_percentage',
+    targetWallet: targetWallet,
+    timestamp: Date.now()
+  });
+});
+
+// Handle custom percentage input
+async function handleSolMirrorCustomPercentage(ctx, userId) {
+  const userState = userStates.get(userId);
+  const percentage = parseInt(ctx.message.text.trim());
+
+  try {
+    userStates.delete(userId);
+
+    if (isNaN(percentage) || percentage < 1 || percentage > 100) {
+      throw new Error('Percentage must be between 1 and 100');
+    }
+
+    await configureSolMirror(ctx, userState.targetWallet, percentage);
+
+  } catch (error) {
+    userStates.delete(userId);
+
+    await ctx.reply(
+      `❌ **Error:** ${error.message}
+
+Please enter a number between 1 and 100.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: `sol_mirror_custom_${userState.targetWallet}` }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// Configure and start SOL mirror
+async function configureSolMirror(ctx, targetWallet, copyPercentage) {
+  const userId = ctx.from.id.toString();
+
+  try {
+    await ctx.editMessageText('⏳ **Setting up mirror trading...**');
+
+    // Configure mirror settings
+    const mirrorConfig = {
+      copyPercentage: copyPercentage,
+      maxAmount: 1.0, // Default max 1 SOL per trade
+      enabledTokens: 'all',
+      slippage: 5
+    };
+
+    // Start mirror trading
+    const result = await mirrorTradingSystem.startMirrorTrading(
+      userId,
+      targetWallet,
+      mirrorConfig
+    );
+
+    const shortWallet = `${targetWallet.slice(0, 6)}...${targetWallet.slice(-4)}`;
+
+    await ctx.editMessageText(
+      `✅ **SOL MIRROR ACTIVATED!**
+
+🎯 **Target:** ${shortWallet}
+📊 **Copy Rate:** ${copyPercentage}%
+💰 **Max Per Trade:** ${mirrorConfig.maxAmount} SOL
+⚡ **Slippage:** ${mirrorConfig.slippage}%
+
+**🔍 Now monitoring target wallet via Helius...**
+**🪞 Will copy all detected trades automatically**
+
+You'll be notified when trades are detected and copied!`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⚙️ Adjust Settings', callback_data: 'sol_mirror_settings' }],
+            [{ text: '📊 View Status', callback_data: 'sol_mirror' }],
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    console.log(`✅ SOL mirror started: User ${userId} -> ${targetWallet} (${copyPercentage}%)`);
+
+  } catch (error) {
+    console.log('Error configuring SOL mirror:', error);
+    await ctx.editMessageText(
+      `❌ **Mirror Setup Failed**
+
+${error.message}
+
+Please try again or contact support.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'sol_mirror_new' }],
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        }
+      }
+    );
+  }
+}
+
+// Stop SOL mirror
+bot.action('sol_mirror_stop', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const stopped = await mirrorTradingSystem.stopMirrorTrading(userId);
+
+    if (stopped) {
+      await ctx.editMessageText(
+        `⏸️ **SOL MIRROR STOPPED**
+
+Mirror trading has been deactivated.
+
+Your settings are saved and you can restart anytime.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🎯 Start New Mirror', callback_data: 'sol_mirror_new' }],
+              [{ text: '📊 View History', callback_data: 'sol_mirror_history' }],
+              [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+            ]
+          }
+        }
+      );
+    } else {
+      await ctx.answerCbQuery('❌ No active mirror found');
+    }
+
+  } catch (error) {
+    console.log('Error stopping SOL mirror:', error);
+    await ctx.answerCbQuery('❌ Error stopping mirror');
+  }
+});
+
+// Show SOL mirror history
+bot.action('sol_mirror_history', async (ctx) => {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const userData = await loadUserData(userId);
+    const mirrorTxs = (userData.transactions || []).filter(
+      tx => tx.type === 'mirror' && tx.chain === 'solana'
+    ).slice(-10);
+
+    if (mirrorTxs.length === 0) {
+      await ctx.editMessageText(
+        `📊 **SOL MIRROR HISTORY**
+
+❌ No mirror transactions found yet.
+
+Start mirror trading to build your history!`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🎯 Start Mirror', callback_data: 'sol_mirror_new' }],
+              [{ text: '🔙 Back to Mirror Setup', callback_data: 'sol_mirror' }]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    let historyText = `📊 **SOL MIRROR HISTORY**\n\n**Last ${mirrorTxs.length} Mirror Trades:**\n\n`;
+
+    mirrorTxs.reverse().forEach((tx, index) => {
+      const date = new Date(tx.timestamp).toLocaleDateString();
+      const status = tx.success ? '✅' : '❌';
+      const amount = parseFloat(tx.amount || 0).toFixed(4);
+
+      historyText += `**${index + 1}.** ${status} ${tx.originalType?.toUpperCase() || 'TRADE'}\n`;
+      historyText += `💰 Amount: ${amount} SOL\n`;
+      historyText += `📅 ${date}\n`;
+      if (tx.txHash) {
+        historyText += `🔗 [View](https://explorer.solana.com/tx/${tx.txHash})\n`;
+      }
+      historyText += `\n`;
+    });
+
+    await ctx.editMessageText(historyText, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Refresh', callback_data: 'sol_mirror_history' }],
+          [{ text: '🔙 Back to Mirror Setup', callback_data: 'sol_mirror' }]
+        ]
+      },
+      parse_mode: 'Markdown'
+    });
+
+  } catch (error) {
+    console.log('Error loading SOL mirror history:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading history**
+
+${error.message}`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to Mirror Setup', callback_data: 'sol_mirror' }
+          ]]
+        }
+      }
+    );
+  }
+});
+
+// Add to main text handler
+// Add these cases to your existing text handler:
+/*
+case 'sol_mirror_target_wallet':
+  await handleSolMirrorTargetWallet(ctx, userId);
+  break;
+case 'sol_mirror_custom_percentage':
+  await handleSolMirrorCustomPercentage(ctx, userId);
+  break;
+*/
+
+
     const quote = await ethChain.getSwapQuote(
       ethChain.contracts.WETH,
       tokenAddress,
@@ -6063,6 +6546,10 @@ bot.on('text', async (ctx) => {
       await handleSolSellCustomAmount(ctx, userId, userState.tokenAddress);
     } else if (userState.action === 'sol_wallet_import') {
       await handleSolWalletImport(ctx, userId);
+    } else if (userState.action === 'sol_mirror_target_wallet') {
+      await handleSolMirrorTargetWallet(ctx, userId);
+    } else if (userState.action === 'sol_mirror_custom_percentage') {
+      await handleSolMirrorCustomPercentage(ctx, userId);
     } else {
       // Unknown state, clear it
       userStates.delete(userId);
