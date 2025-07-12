@@ -468,20 +468,44 @@ class SolChain {
       const lamports = Math.floor(feeAmountFloat * LAMPORTS_PER_SOL);
       console.log(`💸 Converting ${feeAmountSOL} SOL to ${lamports} lamports`);
 
-      // ✅ STEP 3: Check wallet balance (simplified - no treasury rent checks)
+      // ✅ STEP 3: Check wallet balance and treasury rent exemption
       const currentBalance = await this.connection.getBalance(wallet.publicKey);
+      const treasuryBalance = await this.connection.getBalance(new PublicKey(treasuryAddress));
+      
+      // Ensure treasury will have rent exemption after receiving fee
+      const rentExemption = await this.connection.getMinimumBalanceForRentExemption(0);
       const requiredAmount = lamports + 10000; // Fee + transaction cost buffer
 
       console.log(`💰 User balance: ${currentBalance} lamports`);
-      console.log(`💸 Fee amount: ${lamports} lamports (${feeAmountSOL} SOL)`);
-      console.log(`💸 Required amount: ${requiredAmount} lamports (fee + buffer)`);
+      console.log(`🏦 Treasury balance: ${treasuryBalance} lamports`);
+      console.log(`💸 Required amount: ${requiredAmount} lamports (${lamports} fee + 10000 buffer)`);
+      console.log(`🔐 Rent exemption: ${rentExemption} lamports`);
 
       if (currentBalance < requiredAmount) {
         console.log(`❌ Insufficient user balance for fee: ${currentBalance} < ${requiredAmount} lamports`);
         return null;
       }
 
-      console.log(`✅ Balance check passed - proceeding with fee collection`);
+      // Check if treasury will maintain rent exemption
+      const treasuryAfterFee = treasuryBalance + lamports;
+      if (treasuryAfterFee < rentExemption) {
+        console.log(`⚠️ Treasury would be below rent exemption after fee: ${treasuryAfterFee} < ${rentExemption}`);
+        console.log(`💡 Adjusting fee to ensure treasury rent exemption`);
+        
+        // Reduce fee to ensure treasury stays rent-exempt
+        const adjustedLamports = Math.max(0, lamports - (rentExemption - treasuryAfterFee));
+        if (adjustedLamports === 0) {
+          console.log(`📝 Fee too small for treasury rent requirements, skipping`);
+          return null;
+        }
+        
+        // Update fee amount
+        lamports = adjustedLamports;
+        feeAmountSOL = lamports / LAMPORTS_PER_SOL;
+        console.log(`✅ Adjusted fee: ${feeAmountSOL} SOL (${lamports} lamports)`);
+      }
+
+      console.log(`✅ Balance and rent exemption checks passed`);
 
       // ✅ STEP 4: Create treasury public key
       const treasuryPublicKey = new PublicKey(treasuryAddress);
