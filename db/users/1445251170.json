@@ -14,7 +14,7 @@
   "ethWallets": [
     "7d2aca93dc0fc54d28ef6f87740049be:39cba12e70a97fdd1be3b01be9091a2f9881eb108e62dc17415a346ca33b207c9cae89137880b23550bf066d9a38946564435194dcbf86303d083e5d60da9a22615d3ee2a64f1c17453e183779a3e83b"
   ],
-  "lastActive": 1752286859687,
+  "lastActive": 1752293680749,
   "solWallets": [],
   "snipeConfig": {
     "active": false,
@@ -322,6 +322,45 @@
       "timestamp": 1752286083781,
       "chain": "ethereum",
       "feeCollectedFirst": true
+    },
+    {
+      "type": "sell",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "amount": "75383535.47051814",
+      "feeAmount": "0.000009840698863731",
+      "feeHash": {
+        "type": 2,
+        "chainId": 1,
+        "nonce": 74,
+        "maxPriorityFeePerGas": {
+          "type": "BigNumber",
+          "hex": "0x303754b0"
+        },
+        "maxFeePerGas": {
+          "type": "BigNumber",
+          "hex": "0x303754b0"
+        },
+        "gasPrice": null,
+        "gasLimit": {
+          "type": "BigNumber",
+          "hex": "0x0186a0"
+        },
+        "to": "0x93Ef5C0C3dFBdb0948eCBcd356B5945732CF3A49",
+        "value": {
+          "type": "BigNumber",
+          "hex": "0x08f3375c3073"
+        },
+        "data": "0x",
+        "accessList": [],
+        "hash": "0xcd5cb1f382e3154363639d21edfab2148d56124776b3804e43566c9879c3c8df",
+        "v": 0,
+        "r": "0xe50213c8a4f9250e7c8409c917e9dcd8717e7ca84dd8a532e87219f11a3a8793",
+        "s": "0x09b99736a1b9ee5df2a9fbfe533ac6362daac089f427de5196a1e76c830185ea",
+        "from": "0x7FeC19473Ef5F6aCb53f532D60f5eaE6a7D409aa",
+        "confirmations": 0
+      },
+      "timestamp": 1752293680748,
+      "chain": "ethereum"
     }
   ],
   "mirrorTargets": [],

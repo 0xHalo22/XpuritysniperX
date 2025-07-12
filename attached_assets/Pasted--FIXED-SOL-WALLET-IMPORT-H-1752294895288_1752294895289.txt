@@ -1,0 +1,148 @@
+// ====================================================================
+// FIXED SOL WALLET IMPORT HANDLER
+// ====================================================================
+
+// SOL wallet import handler - FIXED VERSION
+async function handleSolWalletImport(ctx, userId) {
+  const privateKey = ctx.message.text.trim();
+
+  try {
+    userStates.delete(userId);
+
+    // ✅ FIX: Use walletManager.importWallet() like ETH, not direct encryption
+    const encryptedKey = await walletManager.importWallet(privateKey, userId);
+
+    // Create wallet to get address (for validation)
+    const wallet = solChain.createWalletFromPrivateKey(privateKey);
+    const address = wallet.publicKey.toString();
+
+    // Update user data
+    const userData = await loadUserData(userId);
+    if (!userData.solWallets) {
+      userData.solWallets = [];
+    }
+    userData.solWallets.push(encryptedKey);
+    await saveUserData(userId, userData);
+
+    await ctx.reply(
+      `✅ **SOL Wallet Imported Successfully!**
+
+Address: \`${address}\`
+
+🔐 Your private key has been encrypted and stored securely.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }
+          ]]
+        },
+        parse_mode: 'Markdown'
+      }
+    );
+
+    logger.info(`User ${userId} imported SOL wallet: ${address}`);
+
+  } catch (error) {
+    userStates.delete(userId);
+    logger.error(`SOL wallet import error for user ${userId}:`, error);
+
+    // Better error handling
+    let errorMessage = 'Invalid SOL private key format. Please check and try again.';
+    
+    if (error.message.includes('Invalid private key')) {
+      errorMessage = 'Invalid private key format. SOL private keys should be base58 strings or byte arrays.';
+    } else if (error.message.includes('Invalid')) {
+      errorMessage = 'Invalid SOL private key. Please check the format and try again.';
+    } else {
+      errorMessage = `Error importing wallet: ${error.message}`;
+    }
+
+    await ctx.reply(`❌ ${errorMessage}`);
+  }
+}
+
+// ====================================================================
+// ALSO FIX: Update your text message handler to include SOL wallet import
+// ====================================================================
+
+// In your existing bot.on('text') handler, make sure you have this case:
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const userState = userStates.get(userId);
+
+  if (!userState) {
+    return;
+  }
+
+  try {
+    // Route to appropriate input handler based on state
+    if (userState.action === 'wallet_import') {
+      await handleWalletImport(ctx, userId); // ETH wallet import
+    } else if (userState.action === 'token_address') {
+      await handleTokenAddress(ctx, userId);
+    } else if (userState.action === 'custom_amount') {
+      await handleCustomAmount(ctx, userId, userState.tokenAddress);
+    } else if (userState.action === 'sell_token_address') {
+      await handleSellTokenAddress(ctx, userId);
+    } else if (userState.action === 'sell_custom_amount') {
+      await handleSellCustomAmount(ctx, userId, userState.tokenAddress);
+    } else if (userState.action === 'waiting_liquidity_token') {
+      await handleLiquidityTokenInput(ctx, userId);
+    } else if (userState.action === 'waiting_method_token') {
+      await handleMethodTokenInput(ctx, userId);
+    } else if (userState.action === 'sol_token_address') {
+      await handleSolTokenAddress(ctx, userId);
+    } else if (userState.action === 'sol_custom_amount') {
+      await handleSolCustomAmount(ctx, userId, userState.tokenAddress);
+    } else if (userState.action === 'sol_sell_token_address') {
+      await handleSolSellTokenAddress(ctx, userId);
+    } else if (userState.action === 'sol_sell_custom_amount') {
+      await handleSolSellCustomAmount(ctx, userId, userState.tokenAddress);
+    } else if (userState.action === 'sol_wallet_import') {
+      // ✅ FIX: Make sure this case exists and calls the fixed function
+      await handleSolWalletImport(ctx, userId);
+    } else {
+      // Unknown state, clear it
+      userStates.delete(userId);
+      await ctx.reply('❌ Session expired. Please try again.');
+    }
+  } catch (error) {
+    console.log('Error in message handler:', error);
+    userStates.delete(userId);
+    await ctx.reply('❌ An error occurred. Please try again.');
+  }
+});
+
+// ====================================================================
+// VALIDATION: Make sure your SOL chain can create wallets properly
+// ====================================================================
+
+// You might also want to add this validation in your SolChain class:
+// 
+// createWalletFromPrivateKey(privateKey) {
+//   try {
+//     // Handle different private key formats
+//     let keyPair;
+//     
+//     if (typeof privateKey === 'string') {
+//       // Try base58 first (most common)
+//       try {
+//         const decoded = bs58.decode(privateKey);
+//         keyPair = Keypair.fromSecretKey(decoded);
+//       } catch {
+//         // Try hex format
+//         const bytes = Buffer.from(privateKey.replace('0x', ''), 'hex');
+//         keyPair = Keypair.fromSecretKey(bytes);
+//       }
+//     } else if (Array.isArray(privateKey)) {
+//       // Byte array format
+//       keyPair = Keypair.fromSecretKey(new Uint8Array(privateKey));
+//     } else {
+//       throw new Error('Invalid private key format');
+//     }
+//     
+//     return keyPair;
+//   } catch (error) {
+//     throw new Error(`Failed to create SOL wallet: ${error.message}`);
+//   }
+// }
