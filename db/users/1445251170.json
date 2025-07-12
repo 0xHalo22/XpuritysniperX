@@ -14,7 +14,7 @@
   "ethWallets": [
     "7d2aca93dc0fc54d28ef6f87740049be:39cba12e70a97fdd1be3b01be9091a2f9881eb108e62dc17415a346ca33b207c9cae89137880b23550bf066d9a38946564435194dcbf86303d083e5d60da9a22615d3ee2a64f1c17453e183779a3e83b"
   ],
-  "lastActive": 1752300589118,
+  "lastActive": 1752300821595,
   "solWallets": [
     "100f33072efbbe5d63e3d37f11958599:76c78c4e48506743f1e51fc45f5f14a0496a47f17975191dabf1935b808628449c38ebe8a4f93b49a860fcf7de401582452a5fa13072a340f88c92db9b8f2c965685118cf73fa1b1f2ab845d3a1e1f0891c993a569311e1b01b85302bcc35a4a"
   ],
@@ -425,6 +425,17 @@
       "txHash": "3ayjjAEoeCGf6EEPvwaB6ksPrAY32gDiww5Uif6g27hVHopozN6T4YkVSBscoE4ZBPFjAkze6Lqi57nvUFvLEbT9",
       "feeHash": null,
       "timestamp": 1752300589117,
+      "chain": "solana"
+    },
+    {
+      "type": "buy",
+      "tokenAddress": "FJXC6Y5HVkNQjHzRbUDiXMEmdXZe7mP7snS5yJmUpump",
+      "amount": "0.01",
+      "tradeAmount": "0.0099",
+      "feeAmount": "0.0001",
+      "txHash": "5DFzM8Z1Le8LboLJBQiU4c8H2vbRe32sRBiRbQ8uRyDNj3wdkKMPkpapB1gyfM5dApCDD8PpaYfXUrvm7Wc1FFHc",
+      "feeHash": null,
+      "timestamp": 1752300821595,
       "chain": "solana"
     }
   ],
