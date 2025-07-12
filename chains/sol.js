@@ -275,9 +275,19 @@ class SolChain {
    */
   isValidAddress(address) {
     try {
+      if (!address || typeof address !== 'string') {
+        return false;
+      }
+      
+      // Basic length check (Solana addresses are typically 32-44 characters)
+      if (address.length < 32 || address.length > 44) {
+        return false;
+      }
+      
       new PublicKey(address);
       return true;
-    } catch {
+    } catch (error) {
+      console.log(`SOL address validation failed: ${error.message}`);
       return false;
     }
   }

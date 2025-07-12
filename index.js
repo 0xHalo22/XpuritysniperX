@@ -623,6 +623,8 @@ Please try importing your wallet again.`,
 // SOL Buy Token Handler - PRODUCTION READY
 bot.action('sol_buy', async (ctx) => {
   const userId = ctx.from.id.toString();
+  console.log(`🟣 SOL Buy action triggered for user: ${userId}`);
+  
   const userData = await loadUserData(userId);
 
   // Check if user has SOL wallet
@@ -673,6 +675,8 @@ Send the token address now:`,
     action: 'sol_token_address',
     timestamp: Date.now()
   });
+  
+  console.log(`🟣 Set user state to sol_token_address for user: ${userId}`);
 });
 
 // SOL Sell Token Handler - PRODUCTION READY
@@ -3183,6 +3187,8 @@ async function handleSolTokenAddress(ctx, userId) {
   try {
     userStates.delete(userId);
 
+    console.log(`🟣 SOL Token Address Input: ${tokenAddress}`);
+
     if (!solChain.isValidAddress(tokenAddress)) {
       throw new Error('Invalid Solana address format');
     }
@@ -3192,6 +3198,7 @@ async function handleSolTokenAddress(ctx, userId) {
     });
 
     const tokenInfo = await solChain.getTokenInfo(tokenAddress);
+    console.log(`✅ SOL Token validated: ${JSON.stringify(tokenInfo)}`);
 
     // Delete the "validating" message
     try {
@@ -3204,6 +3211,7 @@ async function handleSolTokenAddress(ctx, userId) {
 
   } catch (error) {
     userStates.delete(userId);
+    console.log(`❌ SOL Token validation error: ${error.message}`);
 
     await ctx.reply(
       `❌ **Error:** ${error.message}
