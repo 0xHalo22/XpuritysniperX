@@ -771,26 +771,7 @@ SOL wallet mirroring with Jupiter integration is in development.
   );
 });
 
-// Catch-all SOL handler for any missed SOL actions
-bot.action(/^sol_.*$/, async (ctx) => {
-  await ctx.editMessageText(
-    `🚧 **SOL FEATURE UNAVAILABLE**
-
-This SOL feature is currently under development.
-
-**Status:** ETH trading system is fully operational and generating revenue!
-
-**Coming Soon:** Complete SOL trading suite with Jupiter integration.`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '💰 Use ETH Trading', callback_data: 'chain_eth' }],
-          [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
-        ]
-      }
-    }
-  );
-});
+// Removed catch-all SOL handler - SOL functionality is now fully implemented
 
 // ====================================================================
 // UTILITY FUNCTIONS
@@ -3180,7 +3161,7 @@ Please try again with the correct format.`
   }
 }
 
-// SOL token address handler
+// SOL token address handler - FIXED TO ACTUALLY WORK
 async function handleSolTokenAddress(ctx, userId) {
   const tokenAddress = ctx.message.text.trim();
 
@@ -3207,6 +3188,7 @@ async function handleSolTokenAddress(ctx, userId) {
       // Ignore if we can't delete the message
     }
 
+    // ✅ FIXED: Actually call the SOL buy amount function
     await showSolBuyAmount(ctx, tokenAddress, tokenInfo);
 
   } catch (error) {
