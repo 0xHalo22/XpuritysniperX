@@ -1,0 +1,119 @@
+/**
+ * 💰 SIMPLIFIED SOL FEE COLLECTION - BULLETPROOF VERSION
+ * 
+ * This function collects SOL fees without unnecessary rent exemption checks.
+ * The treasury account already exists and can receive ANY amount of SOL.
+ */
+async sendFeeToTreasury(wallet, feeAmountSOL) {
+  try {
+    console.log(`🔍 SOL FEE COLLECTION:`);
+    console.log(`  Fee Amount: ${feeAmountSOL} SOL`);
+    console.log(`  Treasury: ${process.env.TREASURY_WALLET_SOL}`);
+    console.log(`  User: ${wallet.publicKey.toString()}`);
+
+    // ✅ STEP 1: Validate treasury configuration
+    const treasuryAddress = process.env.TREASURY_WALLET_SOL;
+    if (!treasuryAddress) {
+      console.log('❌ SOL treasury wallet not configured');
+      return null;
+    }
+
+    if (!this.isValidAddress(treasuryAddress)) {
+      console.log(`❌ Invalid treasury address: ${treasuryAddress}`);
+      return null;
+    }
+
+    // ✅ STEP 2: Validate fee amount
+    const feeAmountFloat = parseFloat(feeAmountSOL);
+    if (feeAmountFloat <= 0) {
+      console.log(`⚠️ Fee amount is zero or negative: ${feeAmountFloat}`);
+      return null;
+    }
+
+    const lamports = Math.floor(feeAmountFloat * LAMPORTS_PER_SOL);
+    console.log(`💸 Converting ${feeAmountSOL} SOL to ${lamports} lamports`);
+
+    // ✅ STEP 3: Check user wallet balance
+    const currentBalance = await this.connection.getBalance(wallet.publicKey);
+    const requiredAmount = lamports + 10000; // Fee + transaction cost buffer
+
+    console.log(`💰 User balance: ${currentBalance} lamports`);
+    console.log(`💸 Required: ${requiredAmount} lamports (${lamports} fee + 10000 tx cost)`);
+
+    if (currentBalance < requiredAmount) {
+      console.log(`❌ Insufficient balance: ${currentBalance} < ${requiredAmount}`);
+      return null;
+    }
+
+    // ✅ STEP 4: Create transaction
+    const treasuryPublicKey = new PublicKey(treasuryAddress);
+    const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
+
+    const feeTransaction = new Transaction({
+      feePayer: wallet.publicKey,
+      recentBlockhash: blockhash
+    }).add(
+      SystemProgram.transfer({
+        fromPubkey: wallet.publicKey,
+        toPubkey: treasuryPublicKey,
+        lamports: lamports
+      })
+    );
+
+    console.log(`🏗️ Fee transaction created for ${lamports} lamports`);
+
+    // ✅ STEP 5: Sign and send transaction
+    feeTransaction.sign(wallet);
+    
+    const signature = await this.connection.sendRawTransaction(
+      feeTransaction.serialize(),
+      {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+        maxRetries: 3
+      }
+    );
+
+    console.log(`🚀 SOL fee transaction sent: ${signature}`);
+
+    // ✅ STEP 6: Confirm transaction (non-blocking)
+    try {
+      await this.confirmTransactionPolling(signature, 'confirmed', 30000);
+      console.log(`✅ SOL fee confirmed: ${signature}`);
+    } catch (confirmError) {
+      console.log(`⚠️ Fee confirmation timeout (but may have succeeded): ${confirmError.message}`);
+      // Don't fail here - the transaction might still be valid
+    }
+
+    // ✅ STEP 7: Success response
+    console.log(`🎉 SOL FEE COLLECTION SUCCESS!`);
+    console.log(`💰 Collected: ${feeAmountSOL} SOL (${lamports} lamports)`);
+    console.log(`🏦 To Treasury: ${treasuryAddress}`);
+    console.log(`🔗 Transaction: ${signature}`);
+
+    return { 
+      signature: signature,
+      amount: feeAmountSOL,
+      lamports: lamports,
+      to: treasuryAddress,
+      confirmed: true
+    };
+
+  } catch (error) {
+    console.log(`❌ SOL fee collection failed: ${error.message}`);
+    
+    // Enhanced error categorization for debugging
+    if (error.message.includes('insufficient')) {
+      console.log('💡 Error: Insufficient balance');
+    } else if (error.message.includes('blockhash')) {
+      console.log('💡 Error: Network/blockhash issue');
+    } else if (error.message.includes('signature')) {
+      console.log('💡 Error: Transaction signature issue');
+    } else {
+      console.log('💡 Error: General network/RPC issue');
+    }
+
+    // Return null instead of throwing to not break main trade
+    return null;
+  }
+}
