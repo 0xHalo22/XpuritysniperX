@@ -14,13 +14,13 @@
   "ethWallets": [
     "7d2aca93dc0fc54d28ef6f87740049be:39cba12e70a97fdd1be3b01be9091a2f9881eb108e62dc17415a346ca33b207c9cae89137880b23550bf066d9a38946564435194dcbf86303d083e5d60da9a22615d3ee2a64f1c17453e183779a3e83b"
   ],
-  "lastActive": 1752286083782,
+  "lastActive": 1752286859687,
   "solWallets": [],
   "snipeConfig": {
     "active": false,
     "amount": 0.1,
     "slippage": 10,
-    "strategy": "contract_methods",
+    "strategy": "first_liquidity",
     "maxPerHour": 5,
     "maxGasPrice": 100,
     "minLiquidity": 1000,
