@@ -218,17 +218,41 @@ class SolChain {
         throw new Error('Failed to get swap transaction from Jupiter');
       }
 
-      // Deserialize transaction
+      // Deserialize transaction - handle versioned transactions
       const swapTransactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
-      const transaction = Transaction.from(swapTransactionBuf);
+      
+      let transaction;
+      try {
+        // Try versioned message first (Jupiter's new format)
+        const { VersionedTransaction } = require('@solana/web3.js');
+        transaction = VersionedTransaction.deserialize(swapTransactionBuf);
+      } catch (versionedError) {
+        // Fallback to legacy transaction format
+        transaction = Transaction.from(swapTransactionBuf);
+      }
 
       // Sign and send transaction
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [wallet],
-        { commitment: 'confirmed' }
-      );
+      let signature;
+      
+      if (transaction.version !== undefined) {
+        // Handle versioned transaction
+        transaction.sign([wallet]);
+        signature = await this.connection.sendRawTransaction(transaction.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed'
+        });
+        
+        // Confirm transaction
+        await this.connection.confirmTransaction(signature, 'confirmed');
+      } else {
+        // Handle legacy transaction
+        signature = await sendAndConfirmTransaction(
+          this.connection,
+          transaction,
+          [wallet],
+          { commitment: 'confirmed' }
+        );
+      }
 
       console.log(`✅ SOL swap completed: ${signature}`);
 

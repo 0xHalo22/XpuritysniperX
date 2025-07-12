@@ -3703,6 +3703,35 @@ bot.action(/^sol_buy_retry_(.+)$/, async (ctx) => {
   }
 });
 
+// Add missing sol_buy_custom retry handler
+bot.action(/^sol_buy_custom_(.+)$/, async (ctx) => {
+  const tokenAddress = ctx.match[1];
+  const userId = ctx.from.id.toString();
+
+  await ctx.editMessageText(
+    `🟣 **CUSTOM AMOUNT**
+
+Enter the SOL amount you want to spend:
+
+Example: 0.25
+
+Send your custom amount now:`,
+    {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Back to Amount Selection', callback_data: `sol_buy_retry_${tokenAddress}` }
+        ]]
+      }
+    }
+  );
+
+  userStates.set(userId, {
+    action: 'sol_custom_amount',
+    tokenAddress: tokenAddress,
+    timestamp: Date.now()
+  });
+});
+
 // ====================================================================
 // SOL SELL IMPLEMENTATION
 // ====================================================================
