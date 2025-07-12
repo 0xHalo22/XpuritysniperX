@@ -4916,8 +4916,199 @@ setInterval(() => {
   };
 }, 24 * 60 * 60 * 1000); // Every 24 hours
 
+// ====================================================================
+// 🎯 MISSING PIECE: EXECUTE SNIPE BUY FUNCTION
+// ====================================================================
+
+/**
+ * Execute snipe buy - THE CORE SNIPING FUNCTION
+ * @param {string} userId - User ID
+ * @param {string} tokenAddress - Token to snipe
+ * @param {number} amount - ETH amount to snipe with
+ * @param {string} triggerTxHash - Transaction that triggered the snipe
+ */
+async function executeSnipeBuy(userId, tokenAddress, amount, triggerTxHash) {
+  const startTime = Date.now();
+  console.log(`🔥 EXECUTING SNIPE BUY: User ${userId}, Token ${tokenAddress}, Amount ${amount} ETH`);
+
+  try {
+    // ✅ STEP 1: Rate limit check
+    checkSnipeRateLimit(userId);
+
+    // ✅ STEP 2: Get user data and wallet
+    const userData = await loadUserData(userId);
+    const wallet = await getWalletForTrading(userId, userData);
+
+    // ✅ STEP 3: Validate balance
+    const balance = await ethChain.getETHBalance(wallet.address);
+    const balanceFloat = parseFloat(balance);
+    const totalNeeded = amount + 0.05; // Amount + gas buffer
+
+    if (balanceFloat < totalNeeded) {
+      throw new Error(`Insufficient balance: ${balance} ETH < ${totalNeeded} ETH needed`);
+    }
+
+    console.log(`✅ Balance check passed: ${balance} ETH available`);
+
+    // ✅ STEP 4: Calculate fees upfront (fee-first structure)
+    const feePercent = userData.premium?.active ? 0.5 : 1.0;
+    const feeAmount = amount * (feePercent / 100);
+    const netTradeAmount = amount - feeAmount;
+
+    console.log(`💰 Snipe breakdown: ${amount} ETH total, ${feeAmount} ETH fee, ${netTradeAmount} ETH trade`);
+
+    // ✅ STEP 5: Get current gas price and adjust for speed
+    const gasPrice = await ethChain.getGasPrice();
+    const snipeGasPrice = gasPrice.gasPrice.mul(200).div(100); // 2x normal gas for speed
+    const snipeGasPriceGwei = parseFloat(ethers.utils.formatUnits(snipeGasPrice, 'gwei'));
+
+    // Check against user's max gas setting
+    const maxGas = userData.snipeConfig?.maxGasPrice || 300;
+    if (snipeGasPriceGwei > maxGas) {
+      throw new Error(`Gas too high: ${snipeGasPriceGwei} gwei > ${maxGas} gwei limit`);
+    }
+
+    console.log(`⛽ Using snipe gas: ${snipeGasPriceGwei} gwei (2x speed boost)`);
+
+    // ✅ STEP 6: Execute the snipe with high speed settings
+    console.log(`🚀 Executing snipe trade: ${netTradeAmount} ETH -> ${tokenAddress}`);
+
+    const snipeResult = await ethChain.executeSwap(
+      ethChain.contracts.WETH,
+      tokenAddress,
+      ethers.utils.parseEther(netTradeAmount.toString()),
+      wallet.privateKey,
+      userData.snipeConfig?.slippage || 20 // Higher slippage for snipes
+    );
+
+    console.log(`✅ SNIPE EXECUTED! Hash: ${snipeResult.hash}`);
+
+    // ✅ STEP 7: Collect fee (non-blocking)
+    let feeResult = null;
+    if (feeAmount > 0) {
+      try {
+        console.log(`💰 Collecting snipe fee: ${feeAmount} ETH`);
+        feeResult = await ethChain.collectFee(
+          wallet.privateKey,
+          feeAmount.toString()
+        );
+        if (feeResult) {
+          console.log(`✅ Snipe fee collected: ${feeResult.hash}`);
+        }
+      } catch (feeError) {
+        console.log(`⚠️ Snipe fee collection failed (non-blocking): ${feeError.message}`);
+      }
+    }
+
+    // ✅ STEP 8: Record transaction
+    await recordTransaction(userId, {
+      type: 'snipe',
+      tokenAddress,
+      amount: amount.toString(),
+      tradeAmount: netTradeAmount.toString(),
+      feeAmount: feeAmount.toString(),
+      txHash: snipeResult.hash,
+      feeHash: feeResult?.hash || null,
+      triggerTxHash: triggerTxHash,
+      timestamp: Date.now(),
+      chain: 'ethereum',
+      strategy: userData.snipeConfig?.strategy || 'unknown',
+      executionTime: Date.now() - startTime,
+      gasPrice: snipeGasPriceGwei
+    });
+
+    // ✅ STEP 9: Track revenue and performance
+    await trackRevenue(feeAmount, 'snipe_fee');
+    
+    // Update performance stats
+    snipePerformanceStats.totalAttempts++;
+    snipePerformanceStats.successfulSnipes++;
+    snipePerformanceStats.totalRevenue += feeAmount;
+    snipePerformanceStats.averageExecutionTime = 
+      (snipePerformanceStats.averageExecutionTime + (Date.now() - startTime)) / 2;
+
+    // ✅ STEP 10: Notify user
+    try {
+      const executionTime = Date.now() - startTime;
+      const tokenSymbol = tokenAddress.slice(0, 6) + '...';
+      
+      await bot.telegram.sendMessage(
+        userId,
+        `🔥 **SNIPE SUCCESSFUL!**\n\n` +
+        `💎 **Token:** ${tokenSymbol}\n` +
+        `💰 **Amount:** ${netTradeAmount} ETH\n` +
+        `⚡ **Speed:** ${executionTime}ms\n` +
+        `⛽ **Gas:** ${snipeGasPriceGwei} gwei\n` +
+        `🔗 **TX:** [View](https://etherscan.io/tx/${snipeResult.hash})\n\n` +
+        `${feeResult ? `💸 **Fee TX:** [View](https://etherscan.io/tx/${feeResult.hash})` : ''}`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (notifyError) {
+      console.log(`⚠️ Failed to notify user ${userId}: ${notifyError.message}`);
+    }
+
+    const totalTime = Date.now() - startTime;
+    console.log(`🎉 SNIPE COMPLETED in ${totalTime}ms! User: ${userId}, Token: ${tokenAddress}, Hash: ${snipeResult.hash}`);
+
+    return {
+      success: true,
+      txHash: snipeResult.hash,
+      feeHash: feeResult?.hash,
+      executionTime: totalTime,
+      netAmount: netTradeAmount,
+      feeAmount: feeAmount
+    };
+
+  } catch (error) {
+    console.log(`❌ SNIPE FAILED: User ${userId}, Token ${tokenAddress}, Error: ${error.message}`);
+
+    // Update performance stats
+    snipePerformanceStats.totalAttempts++;
+
+    // Record failed attempt
+    try {
+      await recordTransaction(userId, {
+        type: 'snipe',
+        tokenAddress,
+        amount: amount.toString(),
+        failed: true,
+        error: error.message,
+        triggerTxHash: triggerTxHash,
+        timestamp: Date.now(),
+        chain: 'ethereum',
+        strategy: userData?.snipeConfig?.strategy || 'unknown',
+        executionTime: Date.now() - startTime
+      });
+    } catch (recordError) {
+      console.log(`⚠️ Failed to record snipe failure: ${recordError.message}`);
+    }
+
+    // Notify user of failure
+    try {
+      await bot.telegram.sendMessage(
+        userId,
+        `❌ **SNIPE FAILED**\n\n` +
+        `💎 **Token:** ${tokenAddress.slice(0, 6)}...\n` +
+        `💰 **Amount:** ${amount} ETH\n` +
+        `❌ **Error:** ${error.message}\n\n` +
+        `🔄 **Don't worry!** The bot will keep trying for new opportunities.`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (notifyError) {
+      console.log(`⚠️ Failed to notify user of snipe failure: ${notifyError.message}`);
+    }
+
+    return {
+      success: false,
+      error: error.message,
+      executionTime: Date.now() - startTime
+    };
+  }
+}
+
 console.log('🎯 CHUNK 4 LOADED: Final integration and enhanced startup ready!');
 console.log('🚀 SNIPING ENGINE FULLY INTEGRATED!');
+console.log('✅ executeSnipeBuy function implemented - SNIPING IS NOW COMPLETE!');
 
 // Start the bot with enhanced sniping capabilities
 startBot();
