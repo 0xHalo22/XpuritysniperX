@@ -485,34 +485,95 @@ Choose your action:`,
 // SOL CRASH PREVENTION HANDLERS - TEMPORARY PLACEHOLDERS
 // ====================================================================
 
-// SOL Wallet handler
+// SOL Wallet handler - IMPLEMENTED
 bot.action('sol_wallet', async (ctx) => {
-  await ctx.editMessageText(
-    `🚧 **SOL WALLET SYSTEM**
+  const userId = ctx.from.id.toString();
+  const userData = await loadUserData(userId);
 
-🔄 **Coming Soon!**
-
-The Solana wallet system is currently under development. All SOL features will be available soon.
-
-**What's Coming:**
-• SOL wallet import and management
-• Multi-wallet SOL support  
-• Secure key encryption
-• Balance monitoring
-
-**Current Status:** ETH trading is fully operational!`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '💰 Use ETH Trading', callback_data: 'chain_eth' }],
-          [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }],
-          [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
-        ]
-      },
-      parse_mode: 'Markdown'
-    }
-  );
+  if (!userData.solWallets || userData.solWallets.length === 0) {
+    await showSolWalletSetup(ctx);
+  } else {
+    await showSolWalletManagement(ctx, userData);
+  }
 });
+
+async function showSolWalletSetup(ctx) {
+  const keyboard = [
+    [{ text: '➕ Import SOL Wallet', callback_data: 'import_sol_wallet' }],
+    [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+  ];
+
+  await ctx.editMessageText(
+    `🟣 **SOL WALLET SETUP**
+
+No SOL wallets found. Import your private key to get started.
+
+⚠️ Your private key will be encrypted and stored securely.
+🔐 We never store plaintext keys.`,
+    { reply_markup: { inline_keyboard: keyboard } }
+  );
+}
+
+async function showSolWalletManagement(ctx, userData) {
+  const userId = ctx.from.id.toString();
+
+  try {
+    const SolChain = require('./chains/sol');
+    const solChain = new SolChain();
+    
+    const encryptedKey = userData.solWallets[userData.activeSolWallet || 0];
+    const privateKey = await walletManager.decryptPrivateKey(encryptedKey, userId);
+    const wallet = solChain.createWalletFromPrivateKey(privateKey);
+    const address = wallet.publicKey.toString();
+    const balance = await solChain.getBalance(address);
+
+    const keyboard = [
+      [{ text: '💰 View Balance', callback_data: 'sol_view_balance' }],
+      [{ text: '📊 Transaction History', callback_data: 'sol_tx_history' }],
+      [{ text: '➕ Add Wallet', callback_data: 'import_sol_wallet' }]
+    ];
+
+    if (userData.solWallets && userData.solWallets.length > 1) {
+      keyboard.push([{ text: '🔄 Switch Wallet', callback_data: 'switch_sol_wallet' }]);
+    }
+
+    keyboard.push([{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]);
+
+    const currentWalletIndex = userData.activeSolWallet || 0;
+
+    await ctx.editMessageText(
+      `🟣 **SOL WALLET**
+
+**Active Wallet:**
+Address: ${address.slice(0, 6)}...${address.slice(-4)}
+Balance: ${balance} SOL
+
+**Wallet ${currentWalletIndex + 1} of ${userData.solWallets?.length || 1}**`,
+      {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'Markdown'
+      }
+    );
+
+  } catch (error) {
+    console.log('Error loading SOL wallet management:', error);
+    await ctx.editMessageText(
+      `❌ **Error loading wallet**
+
+${error.message}
+
+Please try importing your wallet again.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '➕ Import Wallet', callback_data: 'import_sol_wallet' }],
+            [{ text: '🔙 Back to SOL Menu', callback_data: 'chain_sol' }]
+          ]
+        }
+      }
+    );
+  }
+}
 
 // SOL Buy handler
 bot.action('sol_buy', async (ctx) => {
