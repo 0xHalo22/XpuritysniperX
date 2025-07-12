@@ -58,28 +58,38 @@
 - **Result**: Complete automated sniping system ready for high-volume usage
 
 ### **🚀 SOL TRADING SYSTEM (2-3 hours)**
-**Task 4: Complete SOL Trading Implementation**
+**Task 4: Complete SOL Trading Implementation - BACKEND ONLY**
 - **Status**: Infrastructure exists (Jupiter integration ready)
-- **Missing**: Full buy/sell flows, wallet integration
+- **Strategy**: Backend-only implementation, zero UI changes
 - **Revenue Opportunity**: Additional 50-100% revenue increase
 
-**SOL Implementation Plan:**
-1. **SOL Wallet Management** (45 min)
-   - Import SOL private keys with validation
-   - Encrypt and store SOL wallets securely
-   - Multi-wallet SOL support
+**🔒 UI CONSISTENCY RULES:**
+- **NO changes** to existing ETH UI components, layouts, or copy
+- **NO modifications** to button text, navigation flows, or visual design
+- **EXACT replication** of ETH user experience patterns for SOL
+- **IDENTICAL** error messages, loading states, and success feedback
+- **SAME** input validation, confirmation screens, and transaction flows
 
-2. **SOL Buy Flow** (60 min)
-   - Token address input with validation
-   - Amount selection with SOL balance checks
-   - Jupiter quote integration and review screen
-   - Transaction execution with fee collection
+**SOL Implementation Plan (Backend Only):**
+1. **SOL Wallet Management** (45 min)
+   - Backend SOL private key import with validation
+   - Secure SOL wallet encryption using existing patterns
+   - SOL multi-wallet support mirroring ETH structure
+   - **UI**: Use exact same wallet management screens as ETH
+
+2. **SOL Buy Flow** (60 min)  
+   - Backend SOL token address validation
+   - SOL balance checks and amount calculations
+   - Jupiter quote integration backend
+   - SOL transaction execution with fee collection
+   - **UI**: Identical to ETH buy flow (same screens, same copy, same buttons)
 
 3. **SOL Sell Flow** (45 min)
-   - SOL token holdings display
-   - Percentage selection (25%, 50%, 75%, 100%)
-   - Jupiter routing for optimal pricing
-   - Sell execution with automatic fee deduction
+   - Backend SOL token holdings detection
+   - SOL percentage selling logic (25%, 50%, 75%, 100%)
+   - Jupiter routing backend integration
+   - SOL sell execution with automatic fee deduction  
+   - **UI**: Exact copy of ETH sell flow interface
 
 ### **📊 ENHANCEMENT FEATURES (1-2 hours)**
 **Task 4: Advanced Features (Optional)**
@@ -131,11 +141,19 @@
 - Integration with existing executeTokenSwap() for proven reliability
 ```
 
-### **Phase 2: SOL Trading Core (2-3 hours)**
-- Leverage existing `chains/sol.js` Jupiter integration
-- Mirror ETH trading UX patterns exactly
-- Implement SOL fee collection to `TREASURY_WALLET_SOL`
-- Add SOL transaction recording and history
+### **Phase 2: SOL Trading Core (2-3 hours) - BACKEND ONLY**
+**Implementation Strategy:**
+- **Backend Integration**: Leverage existing `chains/sol.js` Jupiter integration
+- **UI Reuse**: Connect SOL backend to existing ETH UI components (zero UI changes)
+- **Pattern Matching**: Copy exact same handler logic from ETH, swap chain calls
+- **Fee Collection**: Implement SOL fee collection to `TREASURY_WALLET_SOL`
+- **Data Storage**: Add SOL transaction recording using existing database patterns
+
+**Technical Approach:**
+- Modify existing ETH handlers to detect chain context and route to appropriate backend
+- Use same input validation, same error messages, same success flows
+- Maintain identical user experience while backend handles ETH vs SOL execution
+- Preserve all existing ETH functionality with zero modifications
 
 ### **Phase 3: Polish & Launch (1 hour)**
 - Complete statistics implementation
@@ -174,12 +192,17 @@
 2. **ETH Fee Collection**: Treasury integration and revenue tracking
 3. **Wallet Encryption**: Security and storage systems
 4. **Core Infrastructure**: Bot initialization, menus, error handling
+5. **UI Components**: All existing interface elements, layouts, copy, and visual design
+6. **User Experience**: Navigation flows, button texts, error messages, loading states
 
 ### **✅ DEVELOPMENT ALLOWED**
 1. **Bug Fixes**: Stack overflow, crash prevention
-2. **SOL System**: Complete new chain implementation
-3. **Feature Enhancement**: Statistics, settings, advanced features
-4. **New Revenue Streams**: Sniping, mirror trading, subscriptions
+2. **SOL Backend**: Complete new chain backend implementation (NO UI changes)
+3. **Handler Integration**: Modify existing handlers to route between ETH/SOL backends
+4. **Fee Collection**: SOL treasury integration using existing patterns
+5. **Data Storage**: SOL transaction and wallet storage using existing database structure
+6. **Feature Enhancement**: Statistics, settings, advanced features
+7. **New Revenue Streams**: Sniping, mirror trading, subscriptions
 
 ### **⚠️ CHANGE APPROVAL REQUIRED**
 - Any modification to ETH trading logic
@@ -198,7 +221,10 @@
    - ✅ All placeholder functions replaced with working code
    - ✅ Real-time Uniswap monitoring implemented
    - ✅ Production-ready snipe execution with fee collection
-4. 🚀 **Begin SOL wallet system** implementation (60 min) - NEXT PRIORITY
+4. 🚀 **Begin SOL backend integration** (60 min) - NEXT PRIORITY
+   - Replace SOL placeholder handlers with backend integration
+   - Connect existing UI to SOL chain functions
+   - Implement SOL wallet management using existing UI flows
 
 ### **This Week**
 1. Complete SOL buy/sell flows
