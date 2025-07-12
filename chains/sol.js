@@ -435,86 +435,56 @@ class SolChain {
   }
 
   /**
-   * 💰 BULLETPROOF SOL FEE COLLECTION - COMPLETE REFACTOR
+   * 💰 SIMPLIFIED SOL FEE COLLECTION - BULLETPROOF VERSION
+   * 
+   * This function collects SOL fees without unnecessary rent exemption checks.
+   * The treasury account already exists and can receive ANY amount of SOL.
    */
   async sendFeeToTreasury(wallet, feeAmountSOL) {
     try {
-      console.log(`🔍 SOL FEE COLLECTION DEBUG:`);
+      console.log(`🔍 SOL FEE COLLECTION:`);
       console.log(`  Fee Amount: ${feeAmountSOL} SOL`);
-      console.log(`  Treasury Wallet: ${process.env.TREASURY_WALLET_SOL}`);
-      console.log(`  User Wallet: ${wallet.publicKey.toString()}`);
+      console.log(`  Treasury: ${process.env.TREASURY_WALLET_SOL}`);
+      console.log(`  User: ${wallet.publicKey.toString()}`);
 
-      // ✅ STEP 1: Validate treasury wallet
+      // ✅ STEP 1: Validate treasury configuration
       const treasuryAddress = process.env.TREASURY_WALLET_SOL;
       if (!treasuryAddress) {
-        console.log('❌ SOL treasury wallet not configured in TREASURY_WALLET_SOL');
+        console.log('❌ SOL treasury wallet not configured');
         return null;
       }
 
       if (!this.isValidAddress(treasuryAddress)) {
-        console.log(`❌ Invalid SOL treasury address format: ${treasuryAddress}`);
+        console.log(`❌ Invalid treasury address: ${treasuryAddress}`);
         return null;
       }
 
-      console.log(`✅ Treasury address validated: ${treasuryAddress}`);
-
-      // ✅ STEP 2: Validate and convert fee amount
+      // ✅ STEP 2: Validate fee amount
       const feeAmountFloat = parseFloat(feeAmountSOL);
       if (feeAmountFloat <= 0) {
-        console.log(`⚠️ Fee amount is zero or negative: ${feeAmountFloat}, skipping`);
+        console.log(`⚠️ Fee amount is zero or negative: ${feeAmountFloat}`);
         return null;
       }
 
       const lamports = Math.floor(feeAmountFloat * LAMPORTS_PER_SOL);
       console.log(`💸 Converting ${feeAmountSOL} SOL to ${lamports} lamports`);
 
-      // ✅ STEP 3: Check wallet balance and treasury rent exemption
+      // ✅ STEP 3: Check user wallet balance
       const currentBalance = await this.connection.getBalance(wallet.publicKey);
-      const treasuryBalance = await this.connection.getBalance(new PublicKey(treasuryAddress));
-      
-      // Ensure treasury will have rent exemption after receiving fee
-      const rentExemption = await this.connection.getMinimumBalanceForRentExemption(0);
       const requiredAmount = lamports + 10000; // Fee + transaction cost buffer
 
       console.log(`💰 User balance: ${currentBalance} lamports`);
-      console.log(`🏦 Treasury balance: ${treasuryBalance} lamports`);
-      console.log(`💸 Required amount: ${requiredAmount} lamports (${lamports} fee + 10000 buffer)`);
-      console.log(`🔐 Rent exemption: ${rentExemption} lamports`);
+      console.log(`💸 Required: ${requiredAmount} lamports (${lamports} fee + 10000 tx cost)`);
 
       if (currentBalance < requiredAmount) {
-        console.log(`❌ Insufficient user balance for fee: ${currentBalance} < ${requiredAmount} lamports`);
+        console.log(`❌ Insufficient balance: ${currentBalance} < ${requiredAmount}`);
         return null;
       }
 
-      // Check if treasury will maintain rent exemption
-      const treasuryAfterFee = treasuryBalance + lamports;
-      if (treasuryAfterFee < rentExemption) {
-        console.log(`⚠️ Treasury would be below rent exemption after fee: ${treasuryAfterFee} < ${rentExemption}`);
-        console.log(`💡 Adjusting fee to ensure treasury rent exemption`);
-        
-        // Reduce fee to ensure treasury stays rent-exempt
-        const adjustedLamports = Math.max(0, lamports - (rentExemption - treasuryAfterFee));
-        if (adjustedLamports === 0) {
-          console.log(`📝 Fee too small for treasury rent requirements, skipping`);
-          return null;
-        }
-        
-        // Update fee amount
-        lamports = adjustedLamports;
-        feeAmountSOL = lamports / LAMPORTS_PER_SOL;
-        console.log(`✅ Adjusted fee: ${feeAmountSOL} SOL (${lamports} lamports)`);
-      }
-
-      console.log(`✅ Balance and rent exemption checks passed`);
-
-      // ✅ STEP 4: Create treasury public key
+      // ✅ STEP 4: Create transaction
       const treasuryPublicKey = new PublicKey(treasuryAddress);
+      const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
 
-      // ✅ STEP 5: Get latest blockhash for transaction
-      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
-      console.log(`🔗 Got latest blockhash: ${blockhash.substring(0, 10)}...`);
-
-      // ✅ STEP 6: Create fee transfer transaction
       const feeTransaction = new Transaction({
         feePayer: wallet.publicKey,
         recentBlockhash: blockhash
@@ -526,72 +496,33 @@ class SolChain {
         })
       );
 
-      console.log(`🏗️ Fee transaction created`);
+      console.log(`🏗️ Fee transaction created for ${lamports} lamports`);
 
-      // ✅ STEP 7: Sign transaction
+      // ✅ STEP 5: Sign and send transaction
       feeTransaction.sign(wallet);
-      console.log(`✍️ Fee transaction signed`);
-
-      // ✅ STEP 8: Send transaction with retries
-      let signature;
-      let attempts = 0;
-      const maxAttempts = 3;
-
-      while (attempts < maxAttempts) {
-        try {
-          console.log(`🚀 Sending SOL fee transaction (attempt ${attempts + 1}/${maxAttempts})...`);
-
-          signature = await this.connection.sendRawTransaction(
-            feeTransaction.serialize(),
-            {
-              skipPreflight: false,
-              preflightCommitment: 'confirmed',
-              maxRetries: 2
-            }
-          );
-
-          console.log(`⏳ SOL fee transaction sent: ${signature}`);
-          break;
-
-        } catch (sendError) {
-          attempts++;
-          console.log(`❌ Send attempt ${attempts} failed: ${sendError.message}`);
-
-          if (attempts >= maxAttempts) {
-            throw sendError;
-          }
-
-          // Wait before retry
-          await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const signature = await this.connection.sendRawTransaction(
+        feeTransaction.serialize(),
+        {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+          maxRetries: 3
         }
-      }
+      );
 
-      // ✅ STEP 9: Confirm transaction
-      console.log(`⏳ Confirming SOL fee transaction...`);
+      console.log(`🚀 SOL fee transaction sent: ${signature}`);
 
+      // ✅ STEP 6: Confirm transaction (non-blocking)
       try {
-        await this.confirmTransactionPolling(signature, 'confirmed', 45000);
-        console.log(`✅ SOL fee transaction confirmed: ${signature}`);
+        await this.confirmTransactionPolling(signature, 'confirmed', 30000);
+        console.log(`✅ SOL fee confirmed: ${signature}`);
       } catch (confirmError) {
-        console.log(`⚠️ Fee confirmation failed but transaction may have succeeded: ${confirmError.message}`);
+        console.log(`⚠️ Fee confirmation timeout (but may have succeeded): ${confirmError.message}`);
         // Don't fail here - the transaction might still be valid
       }
 
-      // ✅ STEP 10: Verify the fee was actually collected
-      try {
-        const newBalance = await this.connection.getBalance(wallet.publicKey);
-        const expectedBalance = currentBalance - lamports - 5000; // Account for transaction fee
-
-        if (newBalance <= expectedBalance + 5000) { // Allow some variance
-          console.log(`✅ Fee collection verified: Balance reduced from ${currentBalance} to ${newBalance}`);
-        } else {
-          console.log(`⚠️ Fee collection verification inconclusive: ${currentBalance} -> ${newBalance}`);
-        }
-      } catch (verifyError) {
-        console.log(`⚠️ Could not verify fee collection: ${verifyError.message}`);
-      }
-
-      console.log(`🎉 SOL fee collection completed successfully!`);
+      // ✅ STEP 7: Success response
+      console.log(`🎉 SOL FEE COLLECTION SUCCESS!`);
       console.log(`💰 Collected: ${feeAmountSOL} SOL (${lamports} lamports)`);
       console.log(`🏦 To Treasury: ${treasuryAddress}`);
       console.log(`🔗 Transaction: ${signature}`);
@@ -606,19 +537,16 @@ class SolChain {
 
     } catch (error) {
       console.log(`❌ SOL fee collection failed: ${error.message}`);
-      console.log(`📊 Error stack:`, error.stack);
-
-      // Enhanced error categorization
+      
+      // Enhanced error categorization for debugging
       if (error.message.includes('insufficient')) {
-        console.log('💡 Error type: Insufficient balance');
-      } else if (error.message.includes('signature') || error.message.includes('transaction')) {
-        console.log('💡 Error type: Transaction/signature issue');
+        console.log('💡 Error: Insufficient balance');
       } else if (error.message.includes('blockhash')) {
-        console.log('💡 Error type: Blockhash/network issue');
-      } else if (error.message.includes('timeout')) {
-        console.log('💡 Error type: Network timeout');
+        console.log('💡 Error: Network/blockhash issue');
+      } else if (error.message.includes('signature')) {
+        console.log('💡 Error: Transaction signature issue');
       } else {
-        console.log('💡 Error type: Unknown network or RPC issue');
+        console.log('💡 Error: General network/RPC issue');
       }
 
       // Return null instead of throwing to not break main trade
