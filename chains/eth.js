@@ -1000,25 +1000,348 @@ class EthChain {
     // 🎯 FUTURE FEATURES PLACEHOLDERS (UNCHANGED)
     // ====================================================================
 
-    async monitorNewPairs() {
-      console.log('🔄 Monitoring new pairs...');
-      // Implementation for sniping features
-    }
+    
+  async monitorNewPairs(callback) {
+    console.log('🔄 Starting Uniswap V2 pair monitoring...');
 
-    async executeSnipe(tokenAddress, amountIn, privateKey) {
-      console.log(`🎯 Executing snipe: ${tokenAddress}`);
-      // Implementation for auto-sniping
-    }
+    try {
+      const provider = await this.getProvider();
 
-    async monitorWallet(walletAddress) {
-      console.log(`👁️ Monitoring wallet: ${walletAddress}`);
-      // Implementation for mirror trading
-    }
+      // Uniswap V2 Factory ABI for PairCreated event
+      const factoryAbi = [
+        'event PairCreated(address indexed token0, address indexed token1, address pair, uint)'
+      ];
 
-    async copyTrade(targetTx, copyPercent, privateKey) {
-      console.log(`📋 Copy trading: ${copyPercent}%`);
-      // Implementation for copy trading
+      const factoryContract = new ethers.Contract(
+        this.contracts.UNISWAP_V2_FACTORY,
+        factoryAbi,
+        provider
+      );
+
+      console.log(`👂 Listening for PairCreated events on ${this.contracts.UNISWAP_V2_FACTORY}`);
+
+      // Listen for new pair creation events
+      factoryContract.on('PairCreated', async (token0, token1, pairAddress, pairIndex) => {
+        try {
+          const newPairData = {
+            token0: token0,
+            token1: token1,
+            pairAddress: pairAddress,
+            pairIndex: pairIndex.toString(),
+            timestamp: Date.now(),
+            blockNumber: await provider.getBlockNumber(),
+            source: 'uniswap_v2_factory'
+          };
+
+          console.log(`🎯 NEW PAIR DETECTED: ${token0} / ${token1} at ${pairAddress}`);
+
+          // Call the callback with new pair data
+          if (callback && typeof callback === 'function') {
+            await callback(newPairData);
+          }
+
+        } catch (callbackError) {
+          console.log(`❌ Pair monitoring callback error: ${callbackError.message}`);
+        }
+      });
+
+      // Also monitor for AddLiquidity events on new pairs for immediate sniping
+      const pairAbi = [
+        'event Mint(address indexed sender, uint amount0, uint amount1)'
+      ];
+
+      // Set up a filter for all Mint events (liquidity additions)
+      const mintFilter = {
+        topics: [
+          ethers.utils.id('Mint(address,uint256,uint256)')
+        ]
+      };
+
+      provider.on(mintFilter, async (log) => {
+        try {
+          const liquidityData = {
+            pairAddress: log.address,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+            timestamp: Date.now(),
+            source: 'liquidity_event'
+          };
+
+          console.log(`💧 LIQUIDITY ADDED: Pair ${log.address} in tx ${log.transactionHash}`);
+
+          if (callback && typeof callback === 'function') {
+            await callback(liquidityData);
+          }
+
+        } catch (liquidityError) {
+          console.log(`❌ Liquidity monitoring error: ${liquidityError.message}`);
+        }
+      });
+
+      console.log(`✅ Pair monitoring active on Uniswap V2`);
+      return true;
+
+    } catch (error) {
+      console.log(`❌ Failed to start pair monitoring: ${error.message}`);
+      throw error;
     }
   }
 
-  module.exports = EthChain;
+  
+  async executeSnipe(tokenAddress, amountIn, privateKey, slippagePercent = 15) {
+    console.log(`🎯 EXECUTING SNIPE: ${tokenAddress} for ${amountIn} ETH`);
+
+    try {
+      // Validate inputs
+      if (!ethers.utils.isAddress(tokenAddress)) {
+        throw new Error('Invalid token address');
+      }
+      if (amountIn <= 0) {
+        throw new Error('Invalid amount');
+      }
+
+      // Get wallet from private key
+      const provider = await this.getProvider();
+      const wallet = new ethers.Wallet(privateKey, provider);
+
+      // Check ETH balance
+      const ethBalance = await provider.getBalance(wallet.address);
+      const ethBalanceFormatted = parseFloat(ethers.utils.formatEther(ethBalance));
+
+      if (ethBalanceFormatted < amountIn) {
+        throw new Error(`Insufficient ETH balance. Have: ${ethBalanceFormatted}, Need: ${amountIn}`);
+      }
+
+      // Higher gas for sniping (aggressive pricing)
+      const feeData = await provider.getFeeData();
+      const gasPrice = feeData.gasPrice.mul(200).div(100); // 2x normal gas
+
+      console.log(`📊 Snipe parameters: ETH=${amountIn}, Slippage=${slippagePercent}%, Gas=${ethers.utils.formatUnits(gasPrice, 'gwei')} gwei`);
+
+      // Calculate fee before executing snipe
+      const feeBreakdown = this.calculateFeeBreakdown(amountIn, 1.0);
+      const netAmount = parseFloat(feeBreakdown.netAmount);
+
+      console.log(`💰 Fee calculation: ${feeBreakdown.feeAmount} ETH fee, ${netAmount} ETH for trading`);
+
+      // Execute the snipe using existing swap infrastructure
+      const result = await this.executeTokenSwap(
+        this.contracts.WETH, // tokenIn (WETH)
+        tokenAddress,        // tokenOut (target token)
+        ethers.utils.parseEther(netAmount.toString()), // use net amount after fee
+        privateKey,         // user's private key
+        slippagePercent     // higher slippage for speed
+      );
+
+      console.log(`✅ SNIPE SUCCESSFUL: ${result.hash}`);
+
+      // Collect fee after successful snipe (non-blocking)
+      try {
+        await this.collectFee(privateKey, feeBreakdown.feeAmountWei);
+      } catch (feeError) {
+        console.log(`⚠️ Fee collection failed (snipe still successful): ${feeError.message}`);
+      }
+
+      return {
+        success: true,
+        hash: result.hash,
+        tokenAddress,
+        amountIn,
+        feeCollected: feeBreakdown.feeAmount,
+        gasUsed: result.gasUsed || 'Unknown',
+        gasPrice: ethers.utils.formatUnits(gasPrice, 'gwei'),
+        timestamp: Date.now()
+      };
+
+    } catch (error) {
+      console.log(`❌ SNIPE FAILED: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+        tokenAddress,
+        amountIn,
+        timestamp: Date.now()
+      };
+    }
+  }
+
+  
+  async monitorWallet(walletAddress, callback) {
+    console.log(`👁️ Starting wallet monitoring: ${walletAddress}`);
+
+    try {
+      if (!ethers.utils.isAddress(walletAddress)) {
+        throw new Error('Invalid wallet address');
+      }
+
+      const provider = await this.getProvider();
+
+      // Create filter for all transactions involving this wallet
+      const filter = {
+        address: null, // Monitor all contracts
+        fromBlock: 'latest'
+      };
+
+      console.log(`🔍 Monitoring transactions for wallet: ${walletAddress}`);
+
+      // Listen for new blocks and check for wallet activity
+      provider.on('block', async (blockNumber) => {
+        try {
+          const block = await provider.getBlockWithTransactions(blockNumber);
+
+          // Check each transaction in the block
+          for (const tx of block.transactions) {
+            if (tx.from && tx.from.toLowerCase() === walletAddress.toLowerCase()) {
+
+              // Parse transaction to identify DEX swaps
+              if (tx.to && (
+                tx.to.toLowerCase() === this.contracts.UNISWAP_V2_ROUTER.toLowerCase() ||
+                tx.to.toLowerCase() === '0xE592427A0AEce92De3Edee1F18E0157C05861564'.toLowerCase() // Uniswap V3
+              )) {
+
+                console.log(`📊 DEX TRANSACTION DETECTED from ${walletAddress}`);
+                console.log(`   TX: ${tx.hash}`);
+                console.log(`   To: ${tx.to}`);
+                console.log(`   Value: ${ethers.utils.formatEther(tx.value)} ETH`);
+
+                const tradeData = {
+                  transactionHash: tx.hash,
+                  from: tx.from,
+                  to: tx.to,
+                  value: tx.value.toString(),
+                  gasPrice: tx.gasPrice?.toString(),
+                  gasLimit: tx.gasLimit?.toString(),
+                  blockNumber: blockNumber,
+                  timestamp: Date.now(),
+                  source: 'wallet_monitor',
+                  router: tx.to
+                };
+
+                // Call callback with trade data
+                if (callback && typeof callback === 'function') {
+                  await callback(tradeData);
+                }
+              }
+            }
+          }
+
+        } catch (blockError) {
+          console.log(`❌ Block processing error: ${blockError.message}`);
+        }
+      });
+
+      console.log(`✅ Wallet monitoring active for: ${walletAddress}`);
+      return true;
+
+    } catch (error) {
+      console.log(`❌ Failed to start wallet monitoring: ${error.message}`);
+      throw error;
+    }
+  }
+
+  
+  async copyTrade(targetTx, copyPercent, privateKey) {
+    console.log(`📋 Copy trading: ${copyPercent}%`);
+    // Implementation for copy trading
+  }
+
+  /**
+   * Handle snipe events and execute automatic sniping
+   */
+  async handleSnipeEvent(eventData, userConfig, privateKey) {
+    console.log(`🎯 HANDLING SNIPE EVENT: ${eventData.source}`);
+
+    try {
+      // Extract token addresses from event
+      let targetToken = null;
+
+      if (eventData.source === 'uniswap_v2_factory') {
+        // New pair created - determine which token to snipe
+        const { token0, token1 } = eventData;
+
+        // Skip if either token is WETH (we want the new token)
+        if (token0.toLowerCase() === this.contracts.WETH.toLowerCase()) {
+          targetToken = token1;
+        } else if (token1.toLowerCase() === this.contracts.WETH.toLowerCase()) {
+          targetToken = token0;
+        } else {
+          console.log(`⚠️ Skipping pair without WETH: ${token0}/${token1}`);
+          return null;
+        }
+
+      } else if (eventData.source === 'liquidity_event') {
+        // Liquidity added to existing pair - check if it's a target token
+        if (userConfig.targetTokens && userConfig.targetTokens.length > 0) {
+          // This requires additional logic to determine token from pair address
+          console.log(`💧 Liquidity event detected, but target token identification needed`);
+          return null;
+        }
+      }
+
+      if (!targetToken) {
+        console.log(`⚠️ No target token identified from event`);
+        return null;
+      }
+
+      // Check if this token is in the user's target list (if using targeted sniping)
+      if (userConfig.targetTokens && userConfig.targetTokens.length > 0) {
+        const isTargeted = userConfig.targetTokens.some(
+          target => target.address.toLowerCase() === targetToken.toLowerCase()
+        );
+
+        if (!isTargeted) {
+          console.log(`⚠️ Token ${targetToken} not in target list, skipping`);
+          return null;
+        }
+      }
+
+      console.log(`🎯 EXECUTING AUTO-SNIPE: ${targetToken}`);
+
+      // Execute the snipe
+      const snipeResult = await this.executeSnipe(
+        targetToken,
+        userConfig.amount || 0.1, // Default to 0.1 ETH if not configured
+        privateKey,
+        userConfig.slippage || 15   // Default to 15% slippage
+      );
+
+      if (snipeResult.success) {
+        console.log(`🎉 AUTO-SNIPE SUCCESSFUL!`);
+        console.log(`   Token: ${targetToken}`);
+        console.log(`   Amount: ${userConfig.amount} ETH`);
+        console.log(`   TX: ${snipeResult.hash}`);
+
+        return {
+          success: true,
+          type: 'auto_snipe',
+          tokenAddress: targetToken,
+          transactionHash: snipeResult.hash,
+          amountUsed: userConfig.amount,
+          timestamp: Date.now(),
+          eventData: eventData
+        };
+      } else {
+        console.log(`❌ AUTO-SNIPE FAILED: ${snipeResult.error}`);
+        return {
+          success: false,
+          type: 'auto_snipe',
+          tokenAddress: targetToken,
+          error: snipeResult.error,
+          timestamp: Date.now(),
+          eventData: eventData
+        };
+      }
+
+    } catch (error) {
+      console.log(`❌ Snipe event handler failed: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+        timestamp: Date.now(),
+        eventData: eventData
+      };
+    }
+  }
+}
+
+module.exports = EthChain;
