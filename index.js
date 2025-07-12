@@ -4290,20 +4290,7 @@ console.log('✅ SOL Buy/Sell flows are now production-ready!');
 console.log('💰 Jupiter integration active for optimal swaps!');
 console.log('🔥 Revenue collection implemented for SOL trades!');
 
-${error.message}
 
-Please try again or contact support.`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔄 Try Again', callback_data: 'eth_buy' }],
-            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
-          ]
-        }
-      }
-    );
-  }
-}
 
 // ====================================================================
 // FEE-FIRST BUY EXECUTION - THE KEY FIX
