@@ -1,3 +1,4 @@
+
 const { Connection, PublicKey, Keypair, Transaction, SystemProgram, LAMPORTS_PER_SOL, sendAndConfirmTransaction } = require('@solana/web3.js');
 const { TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, getAccount } = require('@solana/spl-token');
 const bs58 = require('bs58');
@@ -5,7 +6,13 @@ const fetch = require('node-fetch');
 
 class SolChain {
   constructor() {
-    this.connection = new Connection(process.env.SOL_RPC_URL || 'https://api.mainnet-beta.solana.com');
+    // Helius RPC connection with WebSocket support
+    this.connection = new Connection(process.env.SOL_RPC_URL, {
+      commitment: 'confirmed',
+      wsEndpoint: process.env.SOL_RPC_WSS || process.env.SOL_RPC_URL?.replace('https://', 'wss://'),
+      disableRetryOnRateLimit: false,
+      confirmTransactionInitialTimeout: 30000
+    });
 
     // Jupiter API for best swap routing
     this.jupiterAPI = 'https://quote-api.jup.ag/v6';
@@ -13,7 +20,33 @@ class SolChain {
     // Native SOL mint address
     this.NATIVE_SOL = 'So11111111111111111111111111111111111111112';
 
-    console.log('✅ SOL Chain initialized with Jupiter integration');
+    // Popular token mints for quick access
+    this.tokens = {
+      SOL: 'So11111111111111111111111111111111111111112',
+      USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+      RAY: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
+      BONK: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263'
+    };
+
+    console.log('✅ SOL Chain initialized with Helius integration');
+    console.log(`🔗 RPC: ${process.env.SOL_RPC_URL?.substring(0, 50)}...`);
+    console.log(`📡 WSS: ${process.env.SOL_RPC_WSS?.substring(0, 50)}...`);
+  }
+
+  /**
+   * Test connection to Helius
+   */
+  async testConnection() {
+    try {
+      const slot = await this.connection.getSlot();
+      const blockTime = await this.connection.getBlockTime(slot);
+      console.log(`🟢 Helius connection successful - Slot: ${slot}, Block time: ${new Date(blockTime * 1000)}`);
+      return true;
+    } catch (error) {
+      console.log(`🔴 Helius connection failed: ${error.message}`);
+      return false;
+    }
   }
 
   /**
@@ -30,7 +63,7 @@ class SolChain {
   }
 
   /**
-   * Get current gas price (priority fee)
+   * Get current priority fee from Helius
    */
   async getGasPrice() {
     try {
@@ -39,7 +72,7 @@ class SolChain {
       const medianFee = fees[Math.floor(fees.length / 2)] || 1000;
 
       const baseFee = 5000;
-      const priorityFee = Math.max(medianFee, 1000);
+      const priorityFee = Math.max(medianFee, 1000); // Minimum 1000 micro-lamports
 
       return {
         baseFee,
@@ -52,6 +85,8 @@ class SolChain {
         }
       };
     } catch (error) {
+      console.log(`⚠️ Failed to get priority fees: ${error.message}`);
+      // Return default fees if API fails
       return {
         baseFee: 5000,
         priorityFee: 1000,
@@ -66,18 +101,53 @@ class SolChain {
   }
 
   /**
-   * Get token information
+   * Get token information using Helius DAS API
    */
   async getTokenInfo(mintAddress) {
     try {
       const mintPublicKey = new PublicKey(mintAddress);
-      const mintInfo = await this.connection.getParsedAccountInfo(mintPublicKey);
+      
+      // Try Helius DAS API first for enhanced token data
+      const heliusUrl = process.env.SOL_RPC_URL.split('?')[0]; // Remove query params
+      try {
+        const dasResponse = await fetch(`${heliusUrl}/v0/token-metadata`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            mintAccounts: [mintAddress],
+            includeOffChain: true,
+            disableCache: false
+          })
+        });
 
-      if (!mintInfo.value) {
-        throw new Error('Token mint not found');
+        if (dasResponse.ok) {
+          const dasData = await dasResponse.json();
+          if (dasData.length > 0) {
+            const token = dasData[0];
+            return {
+              address: mintAddress,
+              name: token.onChainMetadata?.metadata?.name || 'Unknown Token',
+              symbol: token.onChainMetadata?.metadata?.symbol || 'UNKNOWN',
+              decimals: token.onChainMetadata?.metadata?.decimals || 9,
+              logoURI: token.offChainMetadata?.metadata?.image,
+              verified: token.onChainMetadata?.metadata?.verified || false,
+              supply: token.onChainMetadata?.metadata?.supply || '0',
+              isNative: mintAddress === this.NATIVE_SOL
+            };
+          }
+        }
+      } catch (dasError) {
+        console.log(`⚠️ DAS API failed, using fallback: ${dasError.message}`);
       }
 
-      // Handle different account types
+      // Fallback to standard RPC
+      const mintInfo = await this.connection.getParsedAccountInfo(mintPublicKey);
+      if (!mintInfo.value) {
+        throw new Error('Token not found');
+      }
+
       let decimals = 9; // Default for SOL
       let supply = '0';
 
@@ -89,16 +159,25 @@ class SolChain {
 
       return {
         address: mintAddress,
+        name: 'Unknown Token',
+        symbol: 'UNKNOWN',
         decimals: decimals,
         supply: supply,
+        logoURI: null,
+        verified: false,
         isNative: mintAddress === this.NATIVE_SOL
       };
+
     } catch (error) {
       // Return default info for unknown tokens
       return {
         address: mintAddress,
+        name: 'Unknown Token',
+        symbol: 'UNKNOWN',
         decimals: 9,
         supply: '0',
+        logoURI: null,
+        verified: false,
         isNative: mintAddress === this.NATIVE_SOL
       };
     }
@@ -182,11 +261,11 @@ class SolChain {
   }
 
   /**
-   * Execute token swap using Jupiter
+   * Execute token swap using Jupiter with Helius for fast settlement
    */
   async executeSwap(wallet, inputMint, outputMint, amount) {
     try {
-      console.log(`🔄 Executing SOL swap: ${amount} ${inputMint} -> ${outputMint}`);
+      console.log(`🔄 Executing SOL swap via Jupiter + Helius: ${amount} ${inputMint} -> ${outputMint}`);
 
       // Handle SOL input/output
       if (inputMint.toLowerCase() === 'sol') {
@@ -231,7 +310,7 @@ class SolChain {
         transaction = Transaction.from(swapTransactionBuf);
       }
 
-      // Sign and send transaction
+      // Sign and send transaction via Helius
       let signature;
       
       if (transaction.version !== undefined) {
@@ -239,13 +318,14 @@ class SolChain {
         transaction.sign([wallet]);
         signature = await this.connection.sendRawTransaction(transaction.serialize(), {
           skipPreflight: false,
-          preflightCommitment: 'confirmed'
+          preflightCommitment: 'confirmed',
+          maxRetries: 3
         });
         
-        // Confirm transaction using polling instead of subscription
+        // Confirm transaction using Helius fast confirmation
         await this.confirmTransactionPolling(signature);
       } else {
-        // Handle legacy transaction - this method uses polling internally
+        // Handle legacy transaction
         signature = await sendAndConfirmTransaction(
           this.connection,
           transaction,
@@ -254,7 +334,7 @@ class SolChain {
         );
       }
 
-      console.log(`✅ SOL swap completed: ${signature}`);
+      console.log(`✅ SOL swap completed via Helius: ${signature}`);
 
       return {
         signature,
@@ -275,7 +355,31 @@ class SolChain {
    */
   createWalletFromPrivateKey(privateKey) {
     try {
-      const privateKeyBytes = bs58.decode(privateKey);
+      // Handle both base58 string and byte array formats
+      let privateKeyBytes;
+      
+      if (typeof privateKey === 'string') {
+        // Try base58 decode first (standard Solana format)
+        try {
+          privateKeyBytes = bs58.decode(privateKey);
+        } catch {
+          // Try JSON array format: [1,2,3,...,64]
+          try {
+            privateKeyBytes = new Uint8Array(JSON.parse(privateKey));
+          } catch {
+            throw new Error('Invalid private key format');
+          }
+        }
+      } else if (Array.isArray(privateKey)) {
+        privateKeyBytes = new Uint8Array(privateKey);
+      } else {
+        throw new Error('Private key must be string or array');
+      }
+
+      if (privateKeyBytes.length !== 64) {
+        throw new Error('Private key must be 64 bytes');
+      }
+
       return Keypair.fromSecretKey(privateKeyBytes);
     } catch (error) {
       throw new Error(`Invalid Solana private key: ${error.message}`);
@@ -361,7 +465,7 @@ class SolChain {
         { commitment: 'confirmed' }
       );
 
-      console.log(`💰 SOL fee collected: ${feeAmount} SOL - TX: ${signature}`);
+      console.log(`💰 SOL fee collected via Helius: ${feeAmount} SOL - TX: ${signature}`);
       return { signature };
 
     } catch (error) {
@@ -371,7 +475,7 @@ class SolChain {
   }
 
   /**
-   * Monitor for new token creation
+   * Monitor for new token creation using Helius
    */
   async startTokenMonitoring(callback) {
     try {
@@ -383,7 +487,8 @@ class SolChain {
               account: accountInfo.accountId.toString(),
               owner: accountInfo.accountInfo.owner.toString(),
               timestamp: Date.now(),
-              source: 'solana_token_program'
+              source: 'helius_token_program',
+              slot: accountInfo.context.slot
             };
             await callback(tokenData);
           } catch (error) {
@@ -393,7 +498,7 @@ class SolChain {
         'confirmed'
       );
 
-      console.log(`🔍 Started SOL token monitoring: ${subscriptionId}`);
+      console.log(`🔍 Started SOL token monitoring via Helius: ${subscriptionId}`);
       return subscriptionId;
     } catch (error) {
       throw new Error(`Failed to start token monitoring: ${error.message}`);
@@ -401,12 +506,15 @@ class SolChain {
   }
 
   /**
-   * Monitor wallet for mirror trading - IMPLEMENTED
+   * Monitor account changes via Helius WebSocket
    */
   async startMirrorTrading(targetWallet, callback) {
     try {
+      console.log(`🪞 Starting SOL mirror monitoring via Helius: ${targetWallet}`);
+      
       const targetPublicKey = new PublicKey(targetWallet);
-
+      
+      // Subscribe to account changes via Helius WebSocket
       const subscriptionId = this.connection.onAccountChange(
         targetPublicKey,
         async (accountInfo) => {
@@ -415,7 +523,8 @@ class SolChain {
               wallet: targetWallet,
               lamports: accountInfo.lamports,
               timestamp: Date.now(),
-              source: 'solana_account_change'
+              source: 'helius_account_change',
+              slot: accountInfo.context.slot
             };
             await callback(tradeData);
           } catch (error) {
@@ -425,7 +534,7 @@ class SolChain {
         'confirmed'
       );
 
-      console.log(`🪞 Started SOL mirror monitoring: ${targetWallet}`);
+      console.log(`✅ Helius mirror monitoring active: ${targetWallet} (Subscription: ${subscriptionId})`);
       return subscriptionId;
     } catch (error) {
       throw new Error(`Failed to start SOL mirror trading: ${error.message}`);
@@ -433,9 +542,42 @@ class SolChain {
   }
 
   /**
-   * Confirm transaction using polling (works with all RPC providers)
+   * Monitor program logs for new token creation (pump.fun, Raydium, etc.)
    */
-  async confirmTransactionPolling(signature, commitment = 'confirmed', timeout = 60000) {
+  async startSniping(programId, callback) {
+    try {
+      console.log(`🎯 Starting SOL sniping via Helius: ${programId}`);
+      
+      const subscriptionId = this.connection.onLogs(
+        new PublicKey(programId),
+        async (logs) => {
+          try {
+            const snipeData = {
+              signature: logs.signature,
+              logs: logs.logs,
+              timestamp: Date.now(),
+              source: 'helius_program_logs',
+              slot: logs.context.slot
+            };
+            await callback(snipeData);
+          } catch (error) {
+            console.log('SOL snipe callback error:', error.message);
+          }
+        },
+        'confirmed'
+      );
+
+      console.log(`✅ Helius sniping active for program: ${programId} (Subscription: ${subscriptionId})`);
+      return subscriptionId;
+    } catch (error) {
+      throw new Error(`Failed to start SOL sniping: ${error.message}`);
+    }
+  }
+
+  /**
+   * Confirm transaction using polling with Helius speed
+   */
+  async confirmTransactionPolling(signature, commitment = 'confirmed', timeout = 30000) {
     const startTime = Date.now();
     
     while (Date.now() - startTime < timeout) {
@@ -449,13 +591,13 @@ class SolChain {
           
           if (status.value.confirmationStatus === commitment || 
               status.value.confirmationStatus === 'finalized') {
-            console.log(`✅ Transaction confirmed: ${signature}`);
+            console.log(`✅ Transaction confirmed via Helius: ${signature}`);
             return status.value;
           }
         }
         
-        // Wait 2 seconds before next check
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Check every 1 second with Helius speed
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
       } catch (error) {
         console.log(`⚠️ Error checking transaction status: ${error.message}`);
@@ -467,7 +609,7 @@ class SolChain {
   }
 
   /**
-   * Get network status
+   * Get network status via Helius
    */
   async getNetworkStatus() {
     try {
@@ -476,17 +618,40 @@ class SolChain {
         this.connection.getEpochInfo()
       ]);
 
+      // Try to get health status
+      let health = 'healthy';
+      try {
+        const healthResult = await this.connection.getHealth();
+        health = healthResult === 'ok' ? 'healthy' : 'degraded';
+      } catch (healthError) {
+        health = 'unknown';
+      }
+
       return {
         slot,
         epoch: epoch.epoch,
-        health: 'healthy',
-        network: 'mainnet-beta'
+        health: health,
+        network: 'mainnet-beta',
+        provider: 'helius'
       };
     } catch (error) {
       return {
         health: 'unhealthy',
-        error: error.message
+        error: error.message,
+        provider: 'helius'
       };
+    }
+  }
+
+  /**
+   * Stop subscription
+   */
+  async stopSubscription(subscriptionId) {
+    try {
+      await this.connection.removeAccountChangeListener(subscriptionId);
+      console.log(`🛑 Stopped Helius subscription: ${subscriptionId}`);
+    } catch (error) {
+      console.log(`⚠️ Failed to stop subscription: ${error.message}`);
     }
   }
 }
