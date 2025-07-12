@@ -14,7 +14,7 @@
   "ethWallets": [
     "7d2aca93dc0fc54d28ef6f87740049be:39cba12e70a97fdd1be3b01be9091a2f9881eb108e62dc17415a346ca33b207c9cae89137880b23550bf066d9a38946564435194dcbf86303d083e5d60da9a22615d3ee2a64f1c17453e183779a3e83b"
   ],
-  "lastActive": 1752199149417,
+  "lastActive": 1752286083782,
   "solWallets": [],
   "snipeConfig": {
     "active": false,
@@ -310,6 +310,18 @@
       },
       "timestamp": 1752199149416,
       "chain": "ethereum"
+    },
+    {
+      "type": "buy",
+      "tokenAddress": "0xad15aF3451623F679AfC2c72ca4bd44B1Bfe69cc",
+      "amount": "0.001",
+      "tradeAmount": "0.00099",
+      "feeAmount": "0.00001",
+      "txHash": "0x3b9694f7c0ca7b318f7a0617ca190dd4c1ebce6d189d757faa1eecf23763c252",
+      "feeHash": "0x1c0b8a4cc3cf4ca6ace42d6579811aa4b8d49607ae4717b8779027d3fff13e87",
+      "timestamp": 1752286083781,
+      "chain": "ethereum",
+      "feeCollectedFirst": true
     }
   ],
   "mirrorTargets": [],
