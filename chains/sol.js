@@ -485,11 +485,29 @@ class SolChain {
       // ✅ STEP 4: Create treasury public key
       const treasuryPublicKey = new PublicKey(treasuryAddress);
 
-      // ✅ STEP 5: Get latest blockhash for transaction
+      // ✅ STEP 5: Check minimum rent exemption (about 890,880 lamports minimum)
+      const rentExemption = await this.connection.getMinimumBalanceForRentExemption(0);
+      const minimumFeeAmount = Math.max(rentExemption, 1000000); // 0.001 SOL minimum
+      
+      console.log(`💰 Rent exemption: ${rentExemption} lamports`);
+      console.log(`💰 Minimum fee: ${minimumFeeAmount} lamports`);
+      
+      if (lamports < minimumFeeAmount) {
+        console.log(`⚠️ Fee amount ${lamports} lamports is below minimum ${minimumFeeAmount} lamports`);
+        console.log(`💡 Suggestion: Implement fee accumulation for small amounts`);
+        return {
+          skipped: true,
+          reason: 'below_minimum',
+          amount: feeAmountSOL,
+          minimumRequired: minimumFeeAmount / LAMPORTS_PER_SOL
+        };
+      }
+
+      // ✅ STEP 6: Get latest blockhash for transaction
       const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
       console.log(`🔗 Got latest blockhash: ${blockhash.substring(0, 10)}...`);
 
-      // ✅ STEP 6: Create fee transfer transaction
+      // ✅ STEP 7: Create fee transfer transaction
       const feeTransaction = new Transaction({
         feePayer: wallet.publicKey,
         recentBlockhash: blockhash
@@ -503,11 +521,11 @@ class SolChain {
 
       console.log(`🏗️ Fee transaction created`);
 
-      // ✅ STEP 7: Sign transaction
+      // ✅ STEP 8: Sign transaction
       feeTransaction.sign(wallet);
       console.log(`✍️ Fee transaction signed`);
 
-      // ✅ STEP 8: Send transaction with retries
+      // ✅ STEP 9: Send transaction with retries
       let signature;
       let attempts = 0;
       const maxAttempts = 3;
@@ -541,7 +559,7 @@ class SolChain {
         }
       }
 
-      // ✅ STEP 9: Confirm transaction
+      // ✅ STEP 10: Confirm transaction
       console.log(`⏳ Confirming SOL fee transaction...`);
 
       try {
@@ -552,7 +570,7 @@ class SolChain {
         // Don't fail here - the transaction might still be valid
       }
 
-      // ✅ STEP 10: Verify the fee was actually collected
+      // ✅ STEP 11: Verify the fee was actually collected
       try {
         const newBalance = await this.connection.getBalance(wallet.publicKey);
         const expectedBalance = currentBalance - lamports - 5000; // Account for transaction fee
