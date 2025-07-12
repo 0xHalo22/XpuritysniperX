@@ -242,10 +242,10 @@ class SolChain {
           preflightCommitment: 'confirmed'
         });
         
-        // Confirm transaction
-        await this.connection.confirmTransaction(signature, 'confirmed');
+        // Confirm transaction using polling instead of subscription
+        await this.confirmTransactionPolling(signature);
       } else {
-        // Handle legacy transaction
+        // Handle legacy transaction - this method uses polling internally
         signature = await sendAndConfirmTransaction(
           this.connection,
           transaction,
@@ -430,6 +430,40 @@ class SolChain {
     } catch (error) {
       throw new Error(`Failed to start SOL mirror trading: ${error.message}`);
     }
+  }
+
+  /**
+   * Confirm transaction using polling (works with all RPC providers)
+   */
+  async confirmTransactionPolling(signature, commitment = 'confirmed', timeout = 60000) {
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < timeout) {
+      try {
+        const status = await this.connection.getSignatureStatus(signature);
+        
+        if (status && status.value) {
+          if (status.value.err) {
+            throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
+          }
+          
+          if (status.value.confirmationStatus === commitment || 
+              status.value.confirmationStatus === 'finalized') {
+            console.log(`✅ Transaction confirmed: ${signature}`);
+            return status.value;
+          }
+        }
+        
+        // Wait 2 seconds before next check
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+      } catch (error) {
+        console.log(`⚠️ Error checking transaction status: ${error.message}`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    
+    throw new Error(`Transaction confirmation timeout after ${timeout}ms`);
   }
 
   /**
