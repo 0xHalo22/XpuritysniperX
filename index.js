@@ -2997,7 +2997,20 @@ Please reduce the amount or add more ETH to your wallet.`,
     await ctx.editMessageText(
       `❌ **Error calculating trade:**
 
+${error.message}
 
+Please try again or contact support.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Try Again', callback_data: 'eth_buy' }],
+            [{ text: '🔙 Back to ETH Menu', callback_data: 'chain_eth' }]
+          ]
+        }
+      }
+    );
+  }
+}
 
 // ====================================================================
 // SOL TRADING SYSTEM - COMPLETE IMPLEMENTATION
