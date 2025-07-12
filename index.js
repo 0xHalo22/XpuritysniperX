@@ -2454,6 +2454,9 @@ bot.on('text', async (ctx) => {
     case 'wallet_import':
       await handleWalletImport(ctx, userId);
       break;
+    case 'sol_wallet_import':
+      await handleSolWalletImport(ctx, userId);
+      break;
     case 'token_address':
       await handleTokenAddress(ctx, userId);
       break;
@@ -2466,8 +2469,27 @@ bot.on('text', async (ctx) => {
     case 'sell_custom_amount':
       await handleSellCustomAmount(ctx, userId, userState.tokenAddress);
       break;
+    case 'sol_token_address':
+      await handleSolTokenAddress(ctx, userId);
+      break;
+    case 'sol_custom_amount':
+      await handleSolCustomAmount(ctx, userId, userState.tokenAddress);
+      break;
+    case 'sol_sell_token_address':
+      await handleSolSellTokenAddress(ctx, userId);
+      break;
+    case 'sol_sell_custom_amount':
+      await handleSolSellCustomAmount(ctx, userId, userState.tokenAddress);
+      break;
+    case 'waiting_liquidity_token':
+      await handleLiquidityTokenInput(ctx, userId);
+      break;
+    case 'waiting_method_token':
+      await handleMethodTokenInput(ctx, userId);
+      break;
     default:
       userStates.delete(userId); // Clear unknown state
+      console.log(`DEBUG: Unknown state cleared: ${userState.action}`);
   }
 });
 
